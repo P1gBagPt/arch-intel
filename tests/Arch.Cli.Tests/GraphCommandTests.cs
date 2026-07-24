@@ -1,4 +1,5 @@
 using Arch.Cli.Commands;
+using Arch.Cli.Output;
 using Arch.Cli.Tests.Fixtures;
 using ArchIntel.GraphStore.Contracts;
 using ArchIntel.GraphStore.Contracts.Enums;
@@ -12,6 +13,9 @@ public sealed class GraphCommandTests : IAsyncLifetime
     private readonly SqliteFixture _fixture = new();
     private readonly IdGenerator _ids = new();
     private DirectoryInfo _tempDir = null!;
+    private NodeDto _controller = null!;
+    private NodeDto _service = null!;
+    private NodeDto _repository = null!;
 
     public async Task InitializeAsync()
     {
@@ -25,18 +29,18 @@ public sealed class GraphCommandTests : IAsyncLifetime
         var otherProjectId = _ids.ProjectId("Test.sln", "SampleErp.BusinessReporting.csproj");
         var otherProject = new ProjectDto { ProjectId = otherProjectId, Name = "SampleErp.BusinessReporting", Path = "BusinessReporting.csproj" };
 
-        var controller = MakeNode(projectId, "Business.OrderController", NodeType.Controller);
-        var service = MakeNode(projectId, "Business.OrderService", NodeType.Service);
-        var repository = MakeNode(projectId, "Business.OrderRepository", NodeType.Repository);
+        _controller = MakeNode(projectId, "Business.OrderController", NodeType.Controller);
+        _service = MakeNode(projectId, "Business.OrderService", NodeType.Service);
+        _repository = MakeNode(projectId, "Business.OrderRepository", NodeType.Repository);
 
         var scan = await _fixture.Writer.BeginScanAsync(new BeginScanRequest { ScanType = ScanType.Full });
         await _fixture.Writer.UpsertProjectAsync(scan, project);
         await _fixture.Writer.UpsertProjectAsync(scan, otherProject);
-        await _fixture.Writer.UpsertNodesAsync(scan, [controller, service, repository]);
+        await _fixture.Writer.UpsertNodesAsync(scan, [_controller, _service, _repository]);
         await _fixture.Writer.UpsertEdgesAsync(scan,
         [
-            MakeEdge(controller.NodeId, service.NodeId, RelationshipType.Calls),
-            MakeEdge(service.NodeId, repository.NodeId, RelationshipType.Calls),
+            MakeEdge(_controller.NodeId, _service.NodeId, RelationshipType.Calls),
+            MakeEdge(_service.NodeId, _repository.NodeId, RelationshipType.Calls),
         ]);
         await _fixture.Writer.CompleteScanAsync(scan);
 
@@ -118,6 +122,42 @@ public sealed class GraphCommandTests : IAsyncLifetime
         var usedBy = Assert.Single(tree.Children, c => c.Label == "Used by");
         Assert.Contains(usedBy.Children, c => c.Label.Contains("OrderController"));
     }
+
+    [Fact]
+    public async Task RunAsync_NodeScoped_Depth2_ShowsNestedDependencies()
+    {
+        var output = new CapturingOutputWriter();
+
+        // OrderController -> OrderService -> OrderRepository: a real 2-hop chain already in the fixture.
+        var exitCode = await GraphCommand.RunAsync(null, _tempDir.FullName, "OrderController", null, null, 2, false, output);
+
+        Assert.Equal(ExitCodes.Success, exitCode);
+        var tree = Assert.Single(output.Trees);
+        var dependsOn = Assert.Single(tree.Children, c => c.Label == "Depends on");
+        var serviceNode = Assert.Single(dependsOn.Children, c => c.Label.Contains("OrderService"));
+        Assert.Contains(serviceNode.Children, c => c.Label.Contains("OrderRepository"));
+    }
+
+    [Fact]
+    public async Task RunAsync_NodeScoped_WithCycle_TerminatesAndMarksTheRevisit()
+    {
+        // Add OrderRepository -> OrderController on top of the existing chain, forming a cycle:
+        // Controller -> Service -> Repository -> Controller. An Incremental scan (not Full) so the
+        // existing project/nodes/edges from InitializeAsync aren't swept away as "stale".
+        var scan = await _fixture.Writer.BeginScanAsync(new BeginScanRequest { ScanType = ScanType.Incremental });
+        await _fixture.Writer.UpsertEdgeAsync(scan, MakeEdge(_repository.NodeId, _controller.NodeId, RelationshipType.Calls));
+        await _fixture.Writer.CompleteScanAsync(scan);
+
+        var output = new CapturingOutputWriter();
+        var exitCode = await GraphCommand.RunAsync(null, _tempDir.FullName, "OrderController", null, null, 5, false, output);
+
+        Assert.Equal(ExitCodes.Success, exitCode);
+        var tree = Assert.Single(output.Trees);
+        Assert.True(ContainsCycleMarker(tree), "expected a '(cycle)' marker somewhere in the tree instead of infinite/unbounded expansion");
+    }
+
+    private static bool ContainsCycleMarker(TreeNodeData node)
+        => node.Label.Contains("(cycle)") || node.Children.Any(ContainsCycleMarker);
 
     [Fact]
     public async Task RunAsync_UnknownProject_ReturnsUserError()
