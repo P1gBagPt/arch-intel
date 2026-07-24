@@ -25,6 +25,23 @@ public interface IGraphReader
     /// <summary>The most recently completed scan for a repo, if any — lets consumers (e.g. the MCP
     /// Server's tool responses) stamp results with a data-freshness signal.</summary>
     Task<ScanMetadataDto?> GetLatestScanMetadataAsync(string repoId = "default", CancellationToken ct = default);
+
+    // ---- Phase 2: subgraph extraction & rendering support ----
+
+    /// <summary>Transitive impact set: everything reachable FROM nodeId within maxDepth hops, following the given relationship types (default: all).</summary>
+    Task<ImpactResultDto> GetImpactAsync(string nodeId, int maxDepth = 10, IReadOnlyCollection<RelationshipType>? relationshipTypes = null, CancellationToken ct = default);
+
+    /// <summary>Transitive dependents: everything that can reach nodeId within maxDepth hops (reverse traversal). Used for "what breaks if I change this".</summary>
+    Task<ImpactResultDto> GetTransitiveDependentsAsync(string nodeId, int maxDepth = 10, IReadOnlyCollection<RelationshipType>? relationshipTypes = null, CancellationToken ct = default);
+
+    /// <summary>Extracts a renderable subgraph (nodes + edges) around a seed node, for Cytoscape/Sigma/React Flow consumption.</summary>
+    Task<SubgraphDto> GetNeighborhoodAsync(GetNeighborhoodRequest request, CancellationToken ct = default);
+
+    /// <summary>Extracts a full or filtered subgraph for a project/set of projects (e.g. "show me the whole Business layer").</summary>
+    Task<SubgraphDto> GetSubgraphAsync(GetSubgraphRequest request, CancellationToken ct = default);
+
+    /// <summary>Finds all simple paths between two nodes, up to maxDepth — used for "how does A reach B" queries and diagram generation.</summary>
+    Task<IReadOnlyList<PathDto>> FindPathsAsync(string sourceNodeId, string targetNodeId, int maxDepth = 8, CancellationToken ct = default);
 }
 
 public sealed record ScanMetadataDto

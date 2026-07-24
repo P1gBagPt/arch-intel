@@ -6,6 +6,7 @@ using ArchIntel.GraphStore.Core;
 
 namespace Arch.Cli.Tests;
 
+[Collection("ConfigDiscovery")]
 public sealed class GraphCommandTests : IAsyncLifetime
 {
     private readonly SqliteFixture _fixture = new();

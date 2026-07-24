@@ -4,6 +4,7 @@ namespace Arch.Cli.Tests;
 
 /// <summary>Covers the discovery precedence from 03-cli.md Section 5.1: explicit flag, ARCH_CONFIG
 /// env var, ./arch.yml, ./.arch/arch.yml, then walking upward through parent directories.</summary>
+[Collection("ConfigDiscovery")]
 public sealed class ConfigDiscoveryTests : IDisposable
 {
     private readonly DirectoryInfo _tempRoot = Directory.CreateTempSubdirectory("archcli-config-");

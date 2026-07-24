@@ -5,7 +5,7 @@ using Dapper;
 
 namespace ArchIntel.GraphStore.Sqlite;
 
-public sealed class SqliteGraphReader : IGraphReader
+public sealed partial class SqliteGraphReader : IGraphReader
 {
     private const string NodeColumns = """
         node_id AS NodeId, repo_id AS RepoId, project_id AS ProjectId, node_type AS NodeType,

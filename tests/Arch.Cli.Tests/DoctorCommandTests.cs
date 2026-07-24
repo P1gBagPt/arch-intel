@@ -1,8 +1,10 @@
 using Arch.Cli.Commands;
 using Arch.Cli.Tests.Fixtures;
+using Microsoft.Data.Sqlite;
 
 namespace Arch.Cli.Tests;
 
+[Collection("ConfigDiscovery")]
 public sealed class DoctorCommandTests
 {
     [Fact]
@@ -20,6 +22,10 @@ public sealed class DoctorCommandTests
         }
         finally
         {
+            // DoctorCommand's DB-reachability check opens (and Microsoft.Data.Sqlite pools) a
+            // connection to .arch/graph.db under tempDir — clear the pool first, or the file handle
+            // outlives the `using` disposal and deleting tempDir intermittently throws IOException.
+            SqliteConnection.ClearAllPools();
             tempDir.Delete(recursive: true);
         }
     }
@@ -40,6 +46,7 @@ public sealed class DoctorCommandTests
         }
         finally
         {
+            SqliteConnection.ClearAllPools();
             tempDir.Delete(recursive: true);
         }
     }

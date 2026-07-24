@@ -102,6 +102,154 @@ public sealed class FixtureGraphReader : IGraphReader
     public Task<ScanMetadataDto?> GetLatestScanMetadataAsync(string repoId = "default", CancellationToken ct = default)
         => Task.FromResult(_latestScan);
 
+    public Task<ImpactResultDto> GetImpactAsync(string nodeId, int maxDepth = 10, IReadOnlyCollection<RelationshipType>? relationshipTypes = null, CancellationToken ct = default)
+        => Task.FromResult(BuildImpact(nodeId, maxDepth, relationshipTypes, forward: true));
+
+    public Task<ImpactResultDto> GetTransitiveDependentsAsync(string nodeId, int maxDepth = 10, IReadOnlyCollection<RelationshipType>? relationshipTypes = null, CancellationToken ct = default)
+        => Task.FromResult(BuildImpact(nodeId, maxDepth, relationshipTypes, forward: false));
+
+    public Task<SubgraphDto> GetNeighborhoodAsync(GetNeighborhoodRequest request, CancellationToken ct = default)
+    {
+        var forward = Bfs(request.SeedNodeId, request.Depth, request.RelationshipTypes, forward: true);
+        var reverse = Bfs(request.SeedNodeId, request.Depth, request.RelationshipTypes, forward: false);
+        var merged = new Dictionary<string, int>(forward);
+        foreach (var (id, depth) in reverse)
+        {
+            if (!merged.TryGetValue(id, out var existing) || depth < existing)
+            {
+                merged[id] = depth;
+            }
+        }
+
+        merged[request.SeedNodeId] = 0;
+
+        IEnumerable<NodeDto> candidates = _nodes.Where(n => merged.ContainsKey(n.NodeId));
+        if (request.NodeTypes is { Count: > 0 } types)
+        {
+            candidates = candidates.Where(n => types.Contains(n.NodeType));
+        }
+
+        if (!request.IncludeExternal)
+        {
+            candidates = candidates.Where(n => !n.IsExternal);
+        }
+
+        var ordered = candidates.OrderBy(n => merged[n.NodeId]).ThenBy(n => n.FullName, StringComparer.OrdinalIgnoreCase).ToList();
+        var truncated = ordered.Count > request.MaxNodes;
+        var finalNodes = ordered.Take(request.MaxNodes).ToList();
+        var nodeIds = finalNodes.Select(n => n.NodeId).ToHashSet();
+        var edges = _edges.Where(e => nodeIds.Contains(e.SourceId) && nodeIds.Contains(e.TargetId)).ToList();
+
+        return Task.FromResult(new SubgraphDto { Nodes = finalNodes, Edges = edges, Truncated = truncated });
+    }
+
+    public Task<SubgraphDto> GetSubgraphAsync(GetSubgraphRequest request, CancellationToken ct = default)
+    {
+        IEnumerable<NodeDto> query = _nodes;
+        if (request.ProjectIds is { Count: > 0 } projectIds)
+        {
+            query = query.Where(n => projectIds.Contains(n.ProjectId));
+        }
+
+        if (request.NodeTypes is { Count: > 0 } types)
+        {
+            query = query.Where(n => types.Contains(n.NodeType));
+        }
+
+        var all = query.OrderBy(n => n.FullName, StringComparer.OrdinalIgnoreCase).ToList();
+        var effectivePageSize = Math.Max(1, Math.Min(request.PageSize, request.MaxNodes));
+        var page = all.Skip(request.Page * request.PageSize).Take(effectivePageSize + 1).ToList();
+        var truncated = page.Count > effectivePageSize;
+        var finalNodes = page.Take(effectivePageSize).ToList();
+        var nodeIds = finalNodes.Select(n => n.NodeId).ToHashSet();
+        var edges = _edges.Where(e => nodeIds.Contains(e.SourceId) && nodeIds.Contains(e.TargetId)).ToList();
+
+        return Task.FromResult(new SubgraphDto { Nodes = finalNodes, Edges = edges, Truncated = truncated });
+    }
+
+    public Task<IReadOnlyList<PathDto>> FindPathsAsync(string sourceNodeId, string targetNodeId, int maxDepth = 8, CancellationToken ct = default)
+    {
+        var paths = new List<PathDto>();
+        void Dfs(string current, List<string> nodePath, List<string> edgePath)
+        {
+            if (nodePath.Count - 1 > maxDepth || paths.Count >= 20)
+            {
+                return;
+            }
+
+            if (current == targetNodeId && nodePath.Count > 1)
+            {
+                paths.Add(new PathDto { NodeIds = [.. nodePath], EdgeIds = [.. edgePath] });
+                return;
+            }
+
+            foreach (var edge in _edges.Where(e => e.SourceId == current && !nodePath.Contains(e.TargetId)))
+            {
+                nodePath.Add(edge.TargetId);
+                edgePath.Add(edge.EdgeId);
+                Dfs(edge.TargetId, nodePath, edgePath);
+                nodePath.RemoveAt(nodePath.Count - 1);
+                edgePath.RemoveAt(edgePath.Count - 1);
+            }
+        }
+
+        Dfs(sourceNodeId, [sourceNodeId], []);
+        return Task.FromResult<IReadOnlyList<PathDto>>(paths);
+    }
+
+    private ImpactResultDto BuildImpact(string nodeId, int maxDepth, IReadOnlyCollection<RelationshipType>? relationshipTypes, bool forward)
+    {
+        var reachable = Bfs(nodeId, maxDepth, relationshipTypes, forward);
+        reachable.Remove(nodeId);
+
+        var affectedNodes = _nodes.Where(n => reachable.ContainsKey(n.NodeId)).ToList();
+        var affectedByType = affectedNodes.GroupBy(n => n.NodeType).ToDictionary(g => g.Key, g => g.Count());
+
+        return new ImpactResultDto
+        {
+            RootNodeId = nodeId,
+            AffectedNodes = affectedNodes,
+            SamplePaths = [],
+            AffectedByType = affectedByType,
+        };
+    }
+
+    private Dictionary<string, int> Bfs(string startNodeId, int maxDepth, IReadOnlyCollection<RelationshipType>? relationshipTypes, bool forward)
+    {
+        var visited = new Dictionary<string, int> { [startNodeId] = 0 };
+        var frontier = new Queue<(string NodeId, int Depth)>();
+        frontier.Enqueue((startNodeId, 0));
+
+        while (frontier.Count > 0)
+        {
+            var (current, depth) = frontier.Dequeue();
+            if (depth >= maxDepth)
+            {
+                continue;
+            }
+
+            var candidateEdges = forward
+                ? _edges.Where(e => e.SourceId == current)
+                : _edges.Where(e => e.TargetId == current);
+            if (relationshipTypes is { Count: > 0 })
+            {
+                candidateEdges = candidateEdges.Where(e => relationshipTypes.Contains(e.RelationshipType));
+            }
+
+            foreach (var edge in candidateEdges)
+            {
+                var next = forward ? edge.TargetId : edge.SourceId;
+                if (!visited.ContainsKey(next))
+                {
+                    visited[next] = depth + 1;
+                    frontier.Enqueue((next, depth + 1));
+                }
+            }
+        }
+
+        return visited;
+    }
+
     private static NodeDto MakeNode(string name, NodeType type, bool isExternal = false) => new()
     {
         NodeId = $"n_{name.Replace(" ", "").ToLowerInvariant()}",
