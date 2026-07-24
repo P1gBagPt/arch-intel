@@ -64,6 +64,22 @@ public class ScanConfigLoaderTests
         Assert.Equal(["bin", "obj"], config.Ignore);
         Assert.Equal(["csharp"], config.Languages);
         Assert.True(config.Rules.FollowDi);
+        Assert.Equal("sqlite", config.Storage.Provider);
+        Assert.Equal(".arch/graph.db", config.Storage.ConnectionString);
+    }
+
+    [Fact]
+    public void LoadFromYaml_ParsesStorageSection_WhenPresent()
+    {
+        var config = ScanConfigLoader.LoadFromYaml("""
+            solution: PatternVision.sln
+            storage:
+              provider: postgres
+              connectionString: Host=localhost;Database=arch
+            """);
+
+        Assert.Equal("postgres", config.Storage.Provider);
+        Assert.Equal("Host=localhost;Database=arch", config.Storage.ConnectionString);
     }
 
     [Fact]

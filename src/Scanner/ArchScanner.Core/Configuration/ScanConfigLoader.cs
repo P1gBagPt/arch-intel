@@ -36,6 +36,7 @@ public static class ScanConfigLoader
             Ignore = raw.Ignore ?? ["bin", "obj"],
             Languages = raw.Languages ?? ["csharp"],
             Rules = raw.Rules ?? new ScanRules(),
+            Storage = raw.Storage ?? new StorageConfig(),
         };
     }
 
@@ -46,5 +47,6 @@ public static class ScanConfigLoader
         public List<string>? Ignore { get; set; }
         public List<string>? Languages { get; set; }
         public ScanRules? Rules { get; set; }
+        public StorageConfig? Storage { get; set; }
     }
 }
