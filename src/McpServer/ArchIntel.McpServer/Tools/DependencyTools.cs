@@ -15,12 +15,16 @@ namespace ArchIntel.McpServer.Tools;
 [McpServerToolType]
 public sealed class DependencyTools(IGraphReader graphReader)
 {
+    /// <summary>Safety cap on total nodes discovered across a multi-hop traversal — deliberately
+    /// smaller than GetNeighborhoodAsync's default (500) since this feeds an LLM's context window.</summary>
+    private const int MaxTraversalNodes = 200;
+
     [McpServerTool(Name = "find_dependencies", UseStructuredContent = true)]
-    [Description("Returns the direct dependencies of a class, interface, service, or project node in the architecture graph.")]
+    [Description("Returns the direct or transitive dependencies of a class, interface, service, or project node in the architecture graph.")]
     public async Task<FindDependenciesResult> FindDependencies(
         [Description("Simple or fully-qualified symbol name, e.g. 'OrderService' or 'PatternVision.Modules.Orders.OrderService'.")]
         string symbolName,
-        [Description("How many relationship hops to traverse. Currently limited to 1 (direct dependencies only) until Graph Store Phase 2 traversal ships; accepted range 1-5 for forward compatibility.")]
+        [Description("How many relationship hops to traverse. 1 = direct dependencies only. Default 1, max 5.")]
         int depth = 1,
         [Description("Optional filter restricting which relationship kinds to follow, e.g. ['References','Injects']. Omit for all kinds.")]
         string[]? relationshipKinds = null,
@@ -36,27 +40,21 @@ public sealed class DependencyTools(IGraphReader graphReader)
             return new FindDependenciesResult { Dependencies = [], Truncated = false, Message = message };
         }
 
-        var edges = await GetEdgesAsync(graphReader.GetDependenciesAsync, rootNode.NodeId, kinds, cancellationToken);
-        var dependencies = new List<GraphEdgeResultDto>();
-        foreach (var edge in edges)
-        {
-            dependencies.Add(new GraphEdgeResultDto
-            {
-                Relationship = edge.Edge.RelationshipType.ToString(),
-                Depth = 1,
-                Node = await GraphNodeMapper.ToDtoAsync(edge.OtherNode, resolver, cancellationToken),
-            });
-        }
+        var (dependencies, truncated) = await TraverseAsync(
+            depth,
+            (id, ct) => GetEdgesAsync(graphReader.GetDependenciesAsync, id, kinds, ct),
+            rootNode.NodeId,
+            resolver,
+            cancellationToken);
 
         var metadata = await graphReader.GetLatestScanMetadataAsync(ct: cancellationToken);
         return new FindDependenciesResult
         {
             RootNode = await GraphNodeMapper.ToDtoAsync(rootNode, resolver, cancellationToken),
             Dependencies = dependencies,
-            Truncated = false,
+            Truncated = truncated,
             GraphVersion = GraphVersionStamp.Format(metadata),
             LastScannedAt = metadata?.CompletedAt,
-            Message = depth > 1 ? "depth beyond 1 requires Graph Store Phase 2 traversal support; returning 1-hop results" : null,
         };
     }
 
@@ -65,7 +63,7 @@ public sealed class DependencyTools(IGraphReader graphReader)
     public async Task<FindCallersResult> FindCallers(
         [Description("Simple or fully-qualified symbol name, e.g. 'IOrderRepository'.")]
         string symbolName,
-        [Description("How many relationship hops to traverse. Currently limited to 1 until Graph Store Phase 2 traversal ships; accepted range 1-5 for forward compatibility.")]
+        [Description("How many relationship hops to traverse. 1 = direct callers only. Default 1, max 5.")]
         int depth = 1,
         CancellationToken cancellationToken = default)
     {
@@ -78,28 +76,80 @@ public sealed class DependencyTools(IGraphReader graphReader)
             return new FindCallersResult { Callers = [], Truncated = false, Message = message };
         }
 
-        var edges = await graphReader.GetCallersAsync(rootNode.NodeId, ct: cancellationToken);
-        var callers = new List<GraphEdgeResultDto>();
-        foreach (var edge in edges)
-        {
-            callers.Add(new GraphEdgeResultDto
-            {
-                Relationship = edge.Edge.RelationshipType.ToString(),
-                Depth = 1,
-                Node = await GraphNodeMapper.ToDtoAsync(edge.OtherNode, resolver, cancellationToken),
-            });
-        }
+        var (callers, truncated) = await TraverseAsync(
+            depth,
+            (id, ct) => graphReader.GetCallersAsync(id, ct: ct),
+            rootNode.NodeId,
+            resolver,
+            cancellationToken);
 
         var metadata = await graphReader.GetLatestScanMetadataAsync(ct: cancellationToken);
         return new FindCallersResult
         {
             RootNode = await GraphNodeMapper.ToDtoAsync(rootNode, resolver, cancellationToken),
             Callers = callers,
-            Truncated = false,
+            Truncated = truncated,
             GraphVersion = GraphVersionStamp.Format(metadata),
             LastScannedAt = metadata?.CompletedAt,
-            Message = depth > 1 ? "depth beyond 1 requires Graph Store Phase 2 traversal support; returning 1-hop results" : null,
         };
+    }
+
+    /// <summary>
+    /// Level-by-level expansion reusing the existing 1-hop edge query, rather than the Graph Store's
+    /// GetImpactAsync/GetNeighborhoodAsync — those only return a flat node list with no per-node
+    /// relationship/depth, which would lose exactly the labeling depth=1 already provides. A visited
+    /// set prevents revisiting a node (handles cycles); a node-count cap keeps a single tool response
+    /// bounded for an LLM's context window.
+    /// </summary>
+    private static async Task<(List<GraphEdgeResultDto> Results, bool Truncated)> TraverseAsync(
+        int maxDepth,
+        Func<string, CancellationToken, Task<IReadOnlyList<EdgeWithNodeDto>>> getEdges,
+        string rootNodeId,
+        ProjectNameResolver resolver,
+        CancellationToken ct)
+    {
+        var visited = new HashSet<string> { rootNodeId };
+        var frontier = new List<string> { rootNodeId };
+        var results = new List<GraphEdgeResultDto>();
+        var truncated = false;
+
+        for (var level = 1; level <= maxDepth && frontier.Count > 0 && !truncated; level++)
+        {
+            var nextFrontier = new List<string>();
+            foreach (var nodeId in frontier)
+            {
+                if (truncated)
+                {
+                    break;
+                }
+
+                foreach (var edge in await getEdges(nodeId, ct))
+                {
+                    if (!visited.Add(edge.OtherNode.NodeId))
+                    {
+                        continue;
+                    }
+
+                    if (results.Count >= MaxTraversalNodes)
+                    {
+                        truncated = true;
+                        break;
+                    }
+
+                    results.Add(new GraphEdgeResultDto
+                    {
+                        Relationship = edge.Edge.RelationshipType.ToString(),
+                        Depth = level,
+                        Node = await GraphNodeMapper.ToDtoAsync(edge.OtherNode, resolver, ct),
+                    });
+                    nextFrontier.Add(edge.OtherNode.NodeId);
+                }
+            }
+
+            frontier = nextFrontier;
+        }
+
+        return (results, truncated);
     }
 
     /// <summary>Resolves symbolName to exactly one node, mirroring the CLI's `arch graph &lt;node&gt;`
@@ -122,7 +172,7 @@ public sealed class DependencyTools(IGraphReader graphReader)
         };
     }
 
-    private static async Task<List<EdgeWithNodeDto>> GetEdgesAsync(
+    private static async Task<IReadOnlyList<EdgeWithNodeDto>> GetEdgesAsync(
         Func<string, RelationshipType?, CancellationToken, Task<IReadOnlyList<EdgeWithNodeDto>>> query,
         string nodeId,
         IReadOnlyList<RelationshipType>? kinds,

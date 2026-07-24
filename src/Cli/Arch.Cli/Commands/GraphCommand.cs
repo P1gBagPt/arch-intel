@@ -9,18 +9,22 @@ namespace Arch.Cli.Commands;
 
 /// <summary>
 /// `arch graph` — query/render the dependency graph (03-cli.md Section 4, "arch graph").
-/// Scoped to what IGraphReader's Phase 1 subset actually supports: project listing, 1-hop
-/// dependencies/callers. Subgraph/impact traversal (--depth &gt; 1, `[node]` neighborhoods beyond
-/// 1 hop) ships once the Graph Store's Phase 2 GetNeighborhoodAsync/GetImpactAsync land.
+/// The `[node]` neighborhood view does a real multi-hop expansion via a BFS layered on top of
+/// IGraphReader's 1-hop GetDependenciesAsync/GetCallersAsync (see ExpandTreeAsync) rather than the
+/// Graph Store's GetNeighborhoodAsync/GetImpactAsync — those return a flat node list with no
+/// per-node relationship/depth, which would lose exactly the "Calls → X" labeling this tree wants
+/// at every level, not just the first one.
 /// </summary>
 public static class GraphCommand
 {
+    private const int MaxDepthOption = 5;
+
     public static Command Build()
     {
         var nodeArgument = new Argument<string?>("node") { Description = "Scope the graph to this node's neighborhood", Arity = ArgumentArity.ZeroOrOne };
         var projectOption = new Option<string?>("--project") { Description = "Filter to a project" };
         var typeOption = new Option<string?>("--type") { Description = "Filter by node kind (e.g. Class, Interface, Service, Controller)" };
-        var depthOption = new Option<int>("--depth") { Description = "Traversal depth (currently limited to 1 hop)", DefaultValueFactory = _ => 2 };
+        var depthOption = new Option<int>("--depth") { Description = "Traversal depth from [node] (1-5)", DefaultValueFactory = _ => 2 };
         var excludeTestsOption = new Option<bool>("--exclude-tests") { Description = "Omit test projects/classes" };
 
         var command = new Command("graph", "Query and render the dependency graph, in full or scoped to a node.")
@@ -86,14 +90,9 @@ public static class GraphCommand
 
         var reader = new SqliteGraphReader(new SqliteConnectionFactory($"Data Source={dbPath}"));
 
-        if (depth > 1)
-        {
-            output.WriteRaw("(note: --depth beyond 1 requires Graph Store Phase 2 traversal support; showing 1-hop results)");
-        }
-
         if (node is not null)
         {
-            return await RunNodeScopedAsync(reader, node, nodeTypeFilter, output, ct);
+            return await RunNodeScopedAsync(reader, node, nodeTypeFilter, Math.Clamp(depth, 1, MaxDepthOption), output, ct);
         }
 
         if (project is not null)
@@ -110,7 +109,7 @@ public static class GraphCommand
     }
 
     private static async Task<int> RunNodeScopedAsync(
-        SqliteGraphReader reader, string name, NodeType? nodeTypeFilter, IOutputWriter output, CancellationToken ct)
+        SqliteGraphReader reader, string name, NodeType? nodeTypeFilter, int depth, IOutputWriter output, CancellationToken ct)
     {
         var matches = await reader.FindByNameAsync(name, nodeTypeFilter, exactMatch: false, ct: ct);
         if (matches.Count == 0)
@@ -126,21 +125,93 @@ public static class GraphCommand
         }
 
         var target = matches[0];
-        var dependencies = await reader.GetDependenciesAsync(target.NodeId, ct: ct);
-        var callers = await reader.GetCallersAsync(target.NodeId, ct: ct);
+        var budget = new TraversalBudget();
+        var dependsOn = await ExpandTreeAsync(reader, target.NodeId, depth, forward: true, budget, ct);
+        var usedBy = await ExpandTreeAsync(reader, target.NodeId, depth, forward: false, budget, ct);
 
         var tree = new TreeNodeData($"{target.Name} ({target.FullName})",
         [
-            new TreeNodeData("Depends on", dependencies
-                .Select(d => new TreeNodeData($"{d.Edge.RelationshipType} → {d.OtherNode.Name}"))
-                .ToList()),
-            new TreeNodeData("Used by", callers
-                .Select(c => new TreeNodeData($"{c.Edge.RelationshipType} ← {c.OtherNode.Name}"))
-                .ToList()),
+            new TreeNodeData("Depends on", dependsOn),
+            new TreeNodeData("Used by", usedBy),
         ]);
 
         output.WriteTree(tree);
+        if (budget.Truncated)
+        {
+            output.WriteRaw($"(note: stopped after {TraversalBudget.MaxNodes} nodes; narrow with --type or a smaller --depth to see more)");
+        }
+
         return ExitCodes.Success;
+    }
+
+    /// <summary>Recursively expands a node's dependencies (forward) or callers (reverse) up to
+    /// `remainingDepth` hops. `ancestors` tracks only the current root-to-node path (not a global
+    /// visited set — added before recursing, removed after returning) so a node reachable via two
+    /// different branches still appears under both; a node that's already an ancestor on the current
+    /// path renders as a "(cycle)" leaf instead of recursing forever.</summary>
+    private static async Task<List<TreeNodeData>> ExpandTreeAsync(
+        SqliteGraphReader reader, string nodeId, int remainingDepth, bool forward, TraversalBudget budget, CancellationToken ct, HashSet<string>? ancestors = null)
+    {
+        ancestors ??= [nodeId];
+        if (remainingDepth <= 0 || budget.Truncated)
+        {
+            return [];
+        }
+
+        var edges = forward
+            ? await reader.GetDependenciesAsync(nodeId, ct: ct)
+            : await reader.GetCallersAsync(nodeId, ct: ct);
+
+        var arrow = forward ? "→" : "←";
+        var children = new List<TreeNodeData>();
+        foreach (var edge in edges)
+        {
+            if (budget.Truncated)
+            {
+                break;
+            }
+
+            var otherNode = edge.OtherNode;
+            var label = $"{edge.Edge.RelationshipType} {arrow} {otherNode.Name}";
+
+            if (ancestors.Contains(otherNode.NodeId))
+            {
+                children.Add(new TreeNodeData($"{label} (cycle)"));
+                continue;
+            }
+
+            if (!budget.TryConsume())
+            {
+                break;
+            }
+
+            ancestors.Add(otherNode.NodeId);
+            var grandchildren = await ExpandTreeAsync(reader, otherNode.NodeId, remainingDepth - 1, forward, budget, ct, ancestors);
+            ancestors.Remove(otherNode.NodeId);
+            children.Add(new TreeNodeData(label, grandchildren));
+        }
+
+        return children;
+    }
+
+    private sealed class TraversalBudget
+    {
+        public const int MaxNodes = 300;
+        private int _remaining = MaxNodes;
+
+        public bool Truncated { get; private set; }
+
+        public bool TryConsume()
+        {
+            if (_remaining <= 0)
+            {
+                Truncated = true;
+                return false;
+            }
+
+            _remaining--;
+            return true;
+        }
     }
 
     private static async Task<int> RunProjectScopedAsync(

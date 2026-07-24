@@ -19,6 +19,12 @@ public sealed class FixtureGraphReader : IGraphReader
     public NodeDto OrderRepository { get; }
     public NodeDto SqlServer { get; }
 
+    /// <summary>Extra nodes giving OrderService a genuine 2-hop forward chain (OrderService ->
+    /// OrderNotifier -> IEmailSender), since the README chain alone has no node with an outgoing
+    /// edge two hops deep — needed to test real multi-level BFS nesting, not just depth=1.</summary>
+    public NodeDto OrderNotifier { get; }
+    public NodeDto IEmailSender { get; }
+
     private readonly List<NodeDto> _nodes;
     private readonly List<EdgeDto> _edges = [];
     private ScanMetadataDto? _latestScan = new() { ScanRunId = 4821, CompletedAt = new DateTimeOffset(2026, 7, 24, 2, 11, 0, TimeSpan.Zero) };
@@ -31,18 +37,26 @@ public sealed class FixtureGraphReader : IGraphReader
         IOrderRepository = MakeNode("IOrderRepository", NodeType.Interface);
         OrderRepository = MakeNode("OrderRepository", NodeType.Repository);
         SqlServer = MakeNode("SQL Server", NodeType.ExternalSystem, isExternal: true);
+        OrderNotifier = MakeNode("OrderNotifier", NodeType.Service);
+        IEmailSender = MakeNode("IEmailSender", NodeType.Interface);
 
-        _nodes = [OrderController, IOrderService, OrderService, IOrderRepository, OrderRepository, SqlServer];
+        _nodes = [OrderController, IOrderService, OrderService, IOrderRepository, OrderRepository, SqlServer, OrderNotifier, IEmailSender];
 
         AddEdge(OrderController, IOrderService, RelationshipType.Calls);
         AddEdge(OrderService, IOrderService, RelationshipType.Implements);
         AddEdge(OrderService, IOrderRepository, RelationshipType.Injects);
         AddEdge(OrderRepository, IOrderRepository, RelationshipType.Implements);
         AddEdge(OrderRepository, SqlServer, RelationshipType.Uses);
+        AddEdge(OrderService, OrderNotifier, RelationshipType.Calls);
+        AddEdge(OrderNotifier, IEmailSender, RelationshipType.Calls);
     }
 
     /// <summary>Lets a test simulate "no completed scan yet".</summary>
     public void ClearScanMetadata() => _latestScan = null;
+
+    /// <summary>Lets a test wire an extra edge (e.g. a cycle back to an existing node) onto the
+    /// otherwise-fixed fixture graph.</summary>
+    public void AddCustomEdge(NodeDto source, NodeDto target, RelationshipType type) => AddEdge(source, target, type);
 
     public Task<NodeDto?> GetNodeAsync(string nodeId, CancellationToken ct = default)
         => Task.FromResult(_nodes.FirstOrDefault(n => n.NodeId == nodeId));
