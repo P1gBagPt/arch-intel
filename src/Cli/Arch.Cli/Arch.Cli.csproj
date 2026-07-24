@@ -5,11 +5,14 @@
     <ProjectReference Include="..\..\GraphStore\ArchIntel.GraphStore.Contracts\ArchIntel.GraphStore.Contracts.csproj" />
     <ProjectReference Include="..\..\GraphStore\ArchIntel.GraphStore.Core\ArchIntel.GraphStore.Core.csproj" />
     <ProjectReference Include="..\..\GraphStore\ArchIntel.GraphStore.Sqlite\ArchIntel.GraphStore.Sqlite.csproj" />
+    <ProjectReference Include="..\..\McpServer\ArchIntel.McpServer\ArchIntel.McpServer.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="System.CommandLine" Version="3.0.0-preview.6.26359.118" />
     <PackageReference Include="Spectre.Console" Version="0.51.1" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
+    <PackageReference Include="ModelContextProtocol" Version="1.4.1" />
   </ItemGroup>
 
   <PropertyGroup>

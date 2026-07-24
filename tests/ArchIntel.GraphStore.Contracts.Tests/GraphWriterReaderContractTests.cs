@@ -213,4 +213,28 @@ public class GraphWriterReaderContractTests : IAsyncLifetime
         Assert.Single(services);
         Assert.Equal(service.NodeId, services[0].NodeId);
     }
+
+    [Fact]
+    public async Task GetLatestScanMetadataAsync_ReturnsNull_WhenNoCompletedScans()
+    {
+        var metadata = await _fixture.Reader.GetLatestScanMetadataAsync();
+
+        Assert.Null(metadata);
+    }
+
+    [Fact]
+    public async Task GetLatestScanMetadataAsync_ReturnsMostRecentCompletedScan()
+    {
+        var scan1 = await _fixture.Writer.BeginScanAsync(new BeginScanRequest { ScanType = ScanType.Full });
+        await _fixture.Writer.CompleteScanAsync(scan1);
+
+        var scan2 = await _fixture.Writer.BeginScanAsync(new BeginScanRequest { ScanType = ScanType.Full });
+        await _fixture.Writer.CompleteScanAsync(scan2);
+
+        var metadata = await _fixture.Reader.GetLatestScanMetadataAsync();
+
+        Assert.NotNull(metadata);
+        Assert.Equal(scan2.ScanRunId, metadata!.ScanRunId);
+        Assert.True(metadata.CompletedAt > DateTimeOffset.UtcNow.AddMinutes(-1));
+    }
 }

@@ -21,6 +21,16 @@ public interface IGraphReader
 
     /// <summary>Direct (1-hop) incoming edges — i.e. who depends on / calls this node.</summary>
     Task<IReadOnlyList<EdgeWithNodeDto>> GetCallersAsync(string nodeId, RelationshipType? relationshipType = null, CancellationToken ct = default);
+
+    /// <summary>The most recently completed scan for a repo, if any — lets consumers (e.g. the MCP
+    /// Server's tool responses) stamp results with a data-freshness signal.</summary>
+    Task<ScanMetadataDto?> GetLatestScanMetadataAsync(string repoId = "default", CancellationToken ct = default);
+}
+
+public sealed record ScanMetadataDto
+{
+    public required long ScanRunId { get; init; }
+    public required DateTimeOffset CompletedAt { get; init; }
 }
 
 public sealed record EdgeWithNodeDto

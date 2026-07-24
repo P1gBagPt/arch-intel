@@ -137,4 +137,36 @@ public sealed class SqliteGraphReader : IGraphReader
 
         return rows.ToList();
     }
+
+    public async Task<ScanMetadataDto?> GetLatestScanMetadataAsync(string repoId = "default", CancellationToken ct = default)
+    {
+        using var connection = await _connectionFactory.OpenConnectionAsync(ct);
+
+        // completed_at is stored as an ISO-8601 TEXT column; Dapper/Microsoft.Data.Sqlite don't
+        // reliably auto-convert TEXT -> DateTimeOffset (unlike DateTime), so read it as a string
+        // and parse explicitly rather than relying on implicit conversion.
+        var row = await connection.QuerySingleOrDefaultAsync<ScanRunRow>(
+            """
+            SELECT scan_run_id AS ScanRunId, completed_at AS CompletedAt
+            FROM scan_runs
+            WHERE repo_id = @RepoId AND status = 'Completed' AND completed_at IS NOT NULL
+            ORDER BY scan_run_id DESC
+            LIMIT 1
+            """,
+            new { RepoId = repoId });
+
+        return row is null
+            ? null
+            : new ScanMetadataDto
+            {
+                ScanRunId = row.ScanRunId,
+                CompletedAt = DateTimeOffset.Parse(row.CompletedAt, null, System.Globalization.DateTimeStyles.RoundtripKind),
+            };
+    }
+
+    private sealed record ScanRunRow
+    {
+        public long ScanRunId { get; init; }
+        public string CompletedAt { get; init; } = "";
+    }
 }
