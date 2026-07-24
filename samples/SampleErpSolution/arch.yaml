@@ -1,0 +1,22 @@
+solution: SampleErpSolution.sln
+
+scanOrder:
+  - Common
+  - Domain
+  - Application
+  - Infrastructure
+  - Api
+  - Tests
+
+ignore:
+  - bin
+  - obj
+
+languages:
+  - csharp
+
+rules:
+  followInheritance: true
+  followDI: true
+  followMediatR: true
+  followProjectReferences: true

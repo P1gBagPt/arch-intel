@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/GraphStore/">
+    <Project Path="src/GraphStore/ArchIntel.GraphStore.Contracts/ArchIntel.GraphStore.Contracts.csproj" />
+    <Project Path="src/GraphStore/ArchIntel.GraphStore.Core/ArchIntel.GraphStore.Core.csproj" />
+    <Project Path="src/GraphStore/ArchIntel.GraphStore.Sqlite/ArchIntel.GraphStore.Sqlite.csproj" />
+  </Folder>
+  <Folder Name="/src/Scanner/">
+    <Project Path="src/Scanner/ArchScanner.Cli/ArchScanner.Cli.csproj" />
+    <Project Path="src/Scanner/ArchScanner.Core/ArchScanner.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ArchIntel.GraphStore.Contracts.Tests/ArchIntel.GraphStore.Contracts.Tests.csproj" />
+    <Project Path="tests/ArchScanner.Core.Tests/ArchScanner.Core.Tests.csproj" />
+  </Folder>
+</Solution>

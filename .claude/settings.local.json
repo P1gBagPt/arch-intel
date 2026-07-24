@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell -NoProfile -Command \"Get-ChildItem 'C:\\\\Users\\\\Daniel\\\\Desktop\\\\Docs\\\\Arch' -Recurse | Select-Object FullName\")",
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "mcp__plugin_context7_context7__query-docs",
+      "Bash(dotnet --version)",
+      "Bash(dotnet --list-sdks)",
+      "Bash(dotnet new *)",
+      "Bash(dotnet sln *)",
+      "Bash(dotnet add *)",
+      "Bash(xargs -I{} echo {})",
+      "Bash(dotnet build *)",
+      "Bash(dotnet test *)",
+      "Bash(sed -i '63s/var \\(nodes, _\\) = Walk\\(SampleCode\\);/var \\(nodes, _, _\\) = Walk\\(SampleCode\\);/' tests/ArchScanner.Core.Tests/ArchDeclarationWalkerTests.cs)",
+      "Bash(sed -i '77s/var \\(nodes, edges\\) = Walk\\(SampleCode\\);/var \\(nodes, edges, projectNodeId\\) = Walk\\(SampleCode\\);/' tests/ArchScanner.Core.Tests/ArchDeclarationWalkerTests.cs)",
+      "Bash(sed -i '107s/var \\(nodes, _\\) = Walk\\(code\\);/var \\(nodes, _, _\\) = Walk\\(code\\);/' tests/ArchScanner.Core.Tests/ArchDeclarationWalkerTests.cs)",
+      "Bash(sed -i '129s/var \\(nodes, _\\) = Walk\\(code\\);/var \\(nodes, _, _\\) = Walk\\(code\\);/' tests/ArchScanner.Core.Tests/ArchDeclarationWalkerTests.cs)",
+      "Read(//c/Users/Daniel/.nuget/packages/system.commandline/**)",
+      "Read(//c/Users/Daniel/.nuget/packages/system.commandline/3.0.0-preview.6.26359.118/lib//**)",
+      "Bash(dotnet run *)"
+    ]
+  }
+}
