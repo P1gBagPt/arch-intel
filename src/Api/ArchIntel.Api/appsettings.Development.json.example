@@ -1,0 +1,21 @@
+{
+  "_comment": "Copy to appsettings.Development.json (gitignored) to try Phase 4 auth locally.",
+  "Authentication": {
+    "Enabled": true
+  },
+  "RepoMemberships": [
+    { "UserId": "local-dev-user", "RepoId": "default", "Role": "Owner" }
+  ],
+  "Cors": {
+    "AllowedOrigins": ["http://localhost:3000"]
+  },
+  "RateLimiting": {
+    "AiOperationsPerMinute": 10
+  },
+  "Metrics": {
+    "CouplingBands": {
+      "Green": 0.3,
+      "Yellow": 0.7
+    }
+  }
+}
