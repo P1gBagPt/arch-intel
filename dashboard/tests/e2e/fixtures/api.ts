@@ -3,6 +3,7 @@ import type { ApiEnvelope } from "@/types/api";
 import type { DiagramResponse } from "@/types/diagram";
 import type { GraphResponse } from "@/types/graph";
 import type { ImpactResponse } from "@/types/impact";
+import type { CircularDependency, CouplingMetric } from "@/types/metrics";
 import type { ProjectSummary } from "@/types/project";
 import type { ServiceDetail, ServiceSummary } from "@/types/service";
 
@@ -93,6 +94,16 @@ export const IMPACT_BY_TARGET_ID: Record<string, ImpactResponse> = {
   },
 };
 
+export const COUPLING: CouplingMetric[] = [
+  { projectId: "proj-domain", projectName: "SampleErp.Domain", afferentCoupling: 8, efferentCoupling: 2, instability: 0.2, band: "Green" },
+  { projectId: "proj-application", projectName: "SampleErp.Application", afferentCoupling: 4, efferentCoupling: 4, instability: 0.5, band: "Yellow" },
+  { projectId: "proj-infrastructure", projectName: "SampleErp.Infrastructure", afferentCoupling: 0, efferentCoupling: 5, instability: 1, band: "Red" },
+];
+
+export const CIRCULAR_DEPENDENCIES: CircularDependency[] = [
+  { cycle: ["proj-application", "proj-infrastructure", "proj-application"], length: 2 },
+];
+
 export const DIAGRAM: DiagramResponse = {
   format: "mermaid",
   content: 'graph TD\n  iorder_repository["IOrderRepository"] -->|Implements| order_repository["OrderRepository"]',
@@ -134,4 +145,9 @@ export async function mockApi(page: Page, apiOrigin: string) {
   });
 
   await page.route(`${apiOrigin}/api/v1/repos/*/diagram`, (route) => json(route, envelope(DIAGRAM)));
+
+  await page.route(`${apiOrigin}/api/v1/repos/*/metrics/coupling`, (route) => json(route, envelope(COUPLING)));
+  await page.route(`${apiOrigin}/api/v1/repos/*/metrics/circular-dependencies`, (route) =>
+    json(route, envelope(CIRCULAR_DEPENDENCIES)),
+  );
 }

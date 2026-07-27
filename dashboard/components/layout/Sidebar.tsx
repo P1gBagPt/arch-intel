@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { href: "/graph", label: "Dependency Graph" },
   { href: "/services", label: "Service Explorer" },
   { href: "/impact", label: "Impact Analysis" },
+  { href: "/coupling", label: "Coupling Heatmap" },
 ];
 
 export function Sidebar() {
