@@ -6,3 +6,4 @@ obj/
 *.db-shm
 scan-output/
 .vs/
+appsettings.Development.json
