@@ -206,6 +206,14 @@ export function CytoscapeGraphRenderer({
     cyRef.current = nextCy;
     prevIdsRef.current = newIds;
 
+    // e2e test hook only (tests/e2e/fixtures/api.ts's specs drive real node clicks through this
+    // rather than guessing pixel coordinates over a non-deterministic cose/grid layout — it
+    // dispatches cy's own "tap" event, so it exercises the exact same onNodeSelect path a real
+    // mouse click would).
+    if (process.env.NODE_ENV !== "production") {
+      (window as unknown as { __cyInstance?: Core }).__cyInstance = nextCy;
+    }
+
     const layoutStart = performance.now();
     nextCy.one("layoutstop", () => {
       const handle: GraphRendererHandle = {
