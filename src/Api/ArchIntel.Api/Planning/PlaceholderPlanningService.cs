@@ -23,7 +23,7 @@ public sealed class PlaceholderPlanningService(IGraphReader reader) : IPlanningS
 
     public async Task<ImplementationPlanResult> GeneratePlanAsync(ImplementationPlanRequest request, CancellationToken ct)
     {
-        var projects = await reader.ListProjectsAsync(ct: ct);
+        var projects = await reader.ListProjectsAsync(request.RepoId, ct);
         var scopedProjects = request.ScopeProjectIds is { Count: > 0 }
             ? projects.Where(p => request.ScopeProjectIds.Contains(p.ProjectId)).ToList()
             : projects;

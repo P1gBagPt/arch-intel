@@ -23,6 +23,7 @@ public static class JobsEndpoints
         })
         .WithName("GetJob")
         .WithTags("Planning")
+        .RequireAuthorization("RequireRepoViewer")
         .Produces<ApiEnvelope<JobStatusResponseDto>>()
         .Produces(StatusCodes.Status404NotFound);
 

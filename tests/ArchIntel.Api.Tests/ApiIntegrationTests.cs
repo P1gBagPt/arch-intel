@@ -112,7 +112,7 @@ public sealed class ApiIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task GetProjects_ReturnsSeededProject()
     {
-        var response = await _client.GetFromJsonAsync<ApiEnvelope<List<ProjectSummaryDto>>>("/api/v1/projects");
+        var response = await _client.GetFromJsonAsync<ApiEnvelope<List<ProjectSummaryDto>>>("/api/v1/repos/default/projects");
 
         Assert.NotNull(response);
         Assert.Equal(2, response!.Data.Count);
@@ -123,24 +123,24 @@ public sealed class ApiIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task GetProjects_Pagination_WalksAllPagesViaCursor()
     {
-        var page1 = await _client.GetFromJsonAsync<ApiEnvelope<List<ProjectSummaryDto>>>("/api/v1/projects?limit=1");
+        var page1 = await _client.GetFromJsonAsync<ApiEnvelope<List<ProjectSummaryDto>>>("/api/v1/repos/default/projects?limit=1");
         Assert.NotNull(page1);
         Assert.Single(page1!.Data);
         Assert.True(page1.Page!.HasNextPage);
 
-        var page2 = await _client.GetFromJsonAsync<ApiEnvelope<List<ProjectSummaryDto>>>($"/api/v1/projects?limit=1&cursor={page1.Page.NextCursor}");
+        var page2 = await _client.GetFromJsonAsync<ApiEnvelope<List<ProjectSummaryDto>>>($"/api/v1/repos/default/projects?limit=1&cursor={page1.Page.NextCursor}");
         Assert.Single(page2!.Data);
         Assert.False(page2.Page!.HasNextPage);
         Assert.NotEqual(page1.Data[0].Id, page2.Data[0].Id);
 
-        var badCursor = await _client.GetAsync("/api/v1/projects?cursor=not-valid-base64!!");
+        var badCursor = await _client.GetAsync("/api/v1/repos/default/projects?cursor=not-valid-base64!!");
         Assert.Equal(HttpStatusCode.BadRequest, badCursor.StatusCode);
     }
 
     [Fact]
     public async Task GetServices_ReturnsControllerAndService_ButNotRepository()
     {
-        var response = await _client.GetFromJsonAsync<ApiEnvelope<List<ServiceSummaryDto>>>("/api/v1/services");
+        var response = await _client.GetFromJsonAsync<ApiEnvelope<List<ServiceSummaryDto>>>("/api/v1/repos/default/services");
 
         Assert.NotNull(response);
         Assert.Contains(response!.Data, s => s.Name == "OrderController" && s.Kind == "Controller");
@@ -151,7 +151,7 @@ public sealed class ApiIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task GetServiceDetail_ComposesDependenciesCallersImplementsAndTests()
     {
-        var response = await _client.GetFromJsonAsync<ApiEnvelope<ServiceDetailDto>>($"/api/v1/services/{_service.NodeId}");
+        var response = await _client.GetFromJsonAsync<ApiEnvelope<ServiceDetailDto>>($"/api/v1/repos/default/services/{_service.NodeId}");
 
         Assert.NotNull(response);
         var detail = response!.Data;
@@ -165,7 +165,7 @@ public sealed class ApiIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task GetServiceDetail_UnknownId_ReturnsProblemDetails404()
     {
-        var response = await _client.GetAsync("/api/v1/services/does-not-exist");
+        var response = await _client.GetAsync("/api/v1/repos/default/services/does-not-exist");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
@@ -175,7 +175,7 @@ public sealed class ApiIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task GetGraph_Unscoped_ReturnsAllSeededNodesAndEdges()
     {
-        var response = await _client.GetFromJsonAsync<ApiEnvelope<GraphResponseDto>>("/api/v1/graph");
+        var response = await _client.GetFromJsonAsync<ApiEnvelope<GraphResponseDto>>("/api/v1/repos/default/graph");
 
         Assert.NotNull(response);
         Assert.Equal(8, response!.Data.Nodes.Count);
@@ -186,7 +186,7 @@ public sealed class ApiIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task GetGraph_ScopedToProject_ReturnsOnlyThatProjectsNodes()
     {
-        var response = await _client.GetFromJsonAsync<ApiEnvelope<GraphResponseDto>>($"/api/v1/graph?scope={_projectId}");
+        var response = await _client.GetFromJsonAsync<ApiEnvelope<GraphResponseDto>>($"/api/v1/repos/default/graph?scope={_projectId}");
 
         Assert.NotNull(response);
         Assert.Equal(7, response!.Data.Nodes.Count); // Orders' own 7 nodes only, not InfraGateway
@@ -195,7 +195,7 @@ public sealed class ApiIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task GetGraph_ScopedToNode_ExpandsNeighborhoodByDepth()
     {
-        var response = await _client.GetFromJsonAsync<ApiEnvelope<GraphResponseDto>>($"/api/v1/graph?scope={_service.NodeId}&depth=1");
+        var response = await _client.GetFromJsonAsync<ApiEnvelope<GraphResponseDto>>($"/api/v1/repos/default/graph?scope={_service.NodeId}&depth=1");
 
         Assert.NotNull(response);
         Assert.Contains(response!.Data.Nodes, n => n.Name == "OrderService");
@@ -206,14 +206,14 @@ public sealed class ApiIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task GetGraph_UnknownScope_ReturnsProblemDetails404()
     {
-        var response = await _client.GetAsync("/api/v1/graph?scope=does-not-exist");
+        var response = await _client.GetAsync("/api/v1/repos/default/graph?scope=does-not-exist");
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]
     public async Task GetGraph_InvalidKind_ReturnsValidationProblem400()
     {
-        var response = await _client.GetAsync("/api/v1/graph?kinds=NotARealKind");
+        var response = await _client.GetAsync("/api/v1/repos/default/graph?kinds=NotARealKind");
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
@@ -222,7 +222,7 @@ public sealed class ApiIntegrationTests : IAsyncLifetime
     {
         // OrderRepository <- OrderService (depth 1) <- OrderController (depth 2)
         //                  <- InfraGateway (depth 3, via the Infrastructure -> Orders cross-project edge)
-        var response = await _client.GetFromJsonAsync<ApiEnvelope<ImpactResponseDto>>($"/api/v1/impact?nodeId={_repository.NodeId}");
+        var response = await _client.GetFromJsonAsync<ApiEnvelope<ImpactResponseDto>>($"/api/v1/repos/default/impact?nodeId={_repository.NodeId}");
 
         Assert.NotNull(response);
         Assert.Equal("OrderRepository", response!.Data.TargetName);
@@ -244,14 +244,14 @@ public sealed class ApiIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task GetImpact_UnknownNodeId_ReturnsProblemDetails404()
     {
-        var response = await _client.GetAsync("/api/v1/impact?nodeId=does-not-exist");
+        var response = await _client.GetAsync("/api/v1/repos/default/impact?nodeId=does-not-exist");
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]
     public async Task GetMetrics_ReturnsBasicTotals()
     {
-        var response = await _client.GetFromJsonAsync<ApiEnvelope<MetricsResponseDto>>("/api/v1/metrics");
+        var response = await _client.GetFromJsonAsync<ApiEnvelope<MetricsResponseDto>>("/api/v1/repos/default/metrics");
 
         Assert.NotNull(response);
         Assert.Equal(2, response!.Data.TotalProjects);
@@ -262,7 +262,7 @@ public sealed class ApiIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task GetCouplingMetrics_ComputesAfferentEfferentAndInstabilityAcrossProjects()
     {
-        var response = await _client.GetFromJsonAsync<ApiEnvelope<List<CouplingMetricDto>>>("/api/v1/metrics/coupling");
+        var response = await _client.GetFromJsonAsync<ApiEnvelope<List<CouplingMetricDto>>>("/api/v1/repos/default/metrics/coupling");
 
         Assert.NotNull(response);
         var orders = Assert.Single(response!.Data, c => c.ProjectId == _projectId);
@@ -278,7 +278,7 @@ public sealed class ApiIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task GetCircularDependencies_DetectsTwoProjectCycle()
     {
-        var response = await _client.GetFromJsonAsync<ApiEnvelope<List<CircularDependencyDto>>>("/api/v1/metrics/circular-dependencies");
+        var response = await _client.GetFromJsonAsync<ApiEnvelope<List<CircularDependencyDto>>>("/api/v1/repos/default/metrics/circular-dependencies");
 
         Assert.NotNull(response);
         var cycle = Assert.Single(response!.Data);
@@ -290,7 +290,7 @@ public sealed class ApiIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task PostDiagram_RendersMermaidForScopedSubgraph()
     {
-        var response = await _client.PostAsJsonAsync("/api/v1/diagram", new DiagramRequestDto(_service.NodeId, Depth: 1));
+        var response = await _client.PostAsJsonAsync("/api/v1/repos/default/diagram", new DiagramRequestDto(_service.NodeId, Depth: 1));
         response.EnsureSuccessStatusCode();
 
         var body = await response.Content.ReadFromJsonAsync<ApiEnvelope<DiagramResponseDto>>();
@@ -304,14 +304,14 @@ public sealed class ApiIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task PostDiagram_UnsupportedFormat_ReturnsValidationProblem400()
     {
-        var response = await _client.PostAsJsonAsync("/api/v1/diagram", new DiagramRequestDto(null, Format: "plantuml"));
+        var response = await _client.PostAsJsonAsync("/api/v1/repos/default/diagram", new DiagramRequestDto(null, Format: "plantuml"));
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]
     public async Task PostImplementationPlan_AcceptsAndCompletesWithPlaceholderPlan()
     {
-        var accepted = await _client.PostAsJsonAsync("/api/v1/implementation-plan", new ImplementationPlanRequest("Implement Archive Order", [_projectId]));
+        var accepted = await _client.PostAsJsonAsync("/api/v1/repos/default/implementation-plan", new ImplementationPlanRequest("Implement Archive Order", [_projectId]));
 
         Assert.Equal(HttpStatusCode.Accepted, accepted.StatusCode);
         Assert.NotNull(accepted.Headers.Location);
@@ -331,7 +331,7 @@ public sealed class ApiIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task PostImplementationPlan_MissingPrompt_ReturnsValidationProblem400()
     {
-        var response = await _client.PostAsJsonAsync("/api/v1/implementation-plan", new ImplementationPlanRequest(""));
+        var response = await _client.PostAsJsonAsync("/api/v1/repos/default/implementation-plan", new ImplementationPlanRequest(""));
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
@@ -339,7 +339,7 @@ public sealed class ApiIntegrationTests : IAsyncLifetime
     public async Task PostArchitectureAnalysis_AcceptsAndCompletesWithRealTransitiveImpact()
     {
         var accepted = await _client.PostAsJsonAsync(
-            "/api/v1/architecture-analysis", new ArchitectureAnalysisRequest("What breaks if we remove IOrderRepository?", [_repository.NodeId]));
+            "/api/v1/repos/default/architecture-analysis", new ArchitectureAnalysisRequest("What breaks if we remove IOrderRepository?", [_repository.NodeId]));
 
         Assert.Equal(HttpStatusCode.Accepted, accepted.StatusCode);
         var acceptedBody = await accepted.Content.ReadFromJsonAsync<ApiEnvelope<JobAcceptedDto>>();
@@ -356,8 +356,70 @@ public sealed class ApiIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task GetJob_UnknownId_ReturnsProblemDetails404()
     {
-        var response = await _client.GetAsync("/api/v1/jobs/job_does_not_exist");
+        var response = await _client.GetAsync("/api/v1/repos/default/jobs/job_does_not_exist");
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetSnapshots_ReturnsCurrentScanAsTheOnlyRealSnapshot()
+    {
+        var response = await _client.GetFromJsonAsync<ApiEnvelope<List<SnapshotDto>>>("/api/v1/repos/default/snapshots");
+
+        Assert.NotNull(response);
+        var snapshot = Assert.Single(response!.Data);
+        Assert.Equal(2, snapshot.ProjectCount);
+        Assert.StartsWith("snap_", snapshot.SnapshotId);
+
+        var byId = await _client.GetFromJsonAsync<ApiEnvelope<SnapshotDto>>($"/api/v1/repos/default/snapshots/{snapshot.SnapshotId}");
+        Assert.Equal(snapshot.SnapshotId, byId!.Data.SnapshotId);
+
+        var unknown = await _client.GetAsync("/api/v1/repos/default/snapshots/snap_does_not_exist");
+        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetSnapshotDiff_ReturnsNotImplemented_NoHistoricalDataExistsYet()
+    {
+        var response = await _client.GetAsync("/api/v1/repos/default/snapshots/snap_1/diff?against=snap_0");
+        Assert.Equal(HttpStatusCode.NotImplemented, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetQualityScore_ComputesWeightedFactors()
+    {
+        var response = await _client.GetFromJsonAsync<ApiEnvelope<QualityScoreDto>>("/api/v1/repos/default/quality-score");
+
+        Assert.NotNull(response);
+        Assert.Equal(3, response!.Data.Factors.Count);
+        Assert.InRange(response.Data.OverallScore, 0, 100);
+        Assert.Contains(response.Data.Factors, f => f.Name == "Coupling");
+        Assert.Contains(response.Data.Factors, f => f.Name == "CircularDependencies");
+        Assert.Contains(response.Data.Factors, f => f.Name == "TestCoverageProxy");
+    }
+
+    [Fact]
+    public async Task InvitationFlow_CreateThenAccept_GrantsRepoMembership()
+    {
+        var created = await _client.PostAsJsonAsync("/api/v1/repos/default/invitations", new CreateInvitationRequest("teammate@example.com", "Maintainer"));
+        created.EnsureSuccessStatusCode();
+        var invitation = (await created.Content.ReadFromJsonAsync<ApiEnvelope<InvitationDto>>())!.Data;
+        Assert.Equal("Pending", invitation.Status);
+
+        var accepted = await _client.PostAsync($"/api/v1/repos/default/invitations/{invitation.InvitationId}/accept", content: null);
+        accepted.EnsureSuccessStatusCode();
+        var membership = (await accepted.Content.ReadFromJsonAsync<ApiEnvelope<MembershipDto>>())!.Data;
+        Assert.Equal("default", membership.RepoId);
+        Assert.Equal("Maintainer", membership.Role);
+
+        var unknownAccept = await _client.PostAsync("/api/v1/repos/default/invitations/inv_does_not_exist/accept", content: null);
+        Assert.Equal(HttpStatusCode.NotFound, unknownAccept.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateInvitation_UnknownRole_ReturnsValidationProblem400()
+    {
+        var response = await _client.PostAsJsonAsync("/api/v1/repos/default/invitations", new CreateInvitationRequest("teammate@example.com", "SuperAdmin"));
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]
@@ -379,7 +441,7 @@ public sealed class ApiIntegrationTests : IAsyncLifetime
         var notifier = _factory.Services.GetRequiredService<IArchitectureChangeNotifier>();
         var fakeEvent = new GraphUpdatedEvent(
             "chg_test", DateTimeOffset.UtcNow, ["n_added"], [], [], [_projectId], new GraphChangeSummary(1, 0, 0));
-        await notifier.GraphUpdatedAsync(fakeEvent);
+        await notifier.GraphUpdatedAsync("default", fakeEvent);
 
         var deliveredEvent = await received.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Equal("chg_test", deliveredEvent.ChangeId);
@@ -391,7 +453,7 @@ public sealed class ApiIntegrationTests : IAsyncLifetime
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
         while (DateTime.UtcNow < deadline)
         {
-            var response = await _client.GetFromJsonAsync<ApiEnvelope<JobStatusResponseDto>>($"/api/v1/jobs/{jobId}");
+            var response = await _client.GetFromJsonAsync<ApiEnvelope<JobStatusResponseDto>>($"/api/v1/repos/default/jobs/{jobId}");
             if (response!.Data.Status is "Completed" or "Failed")
             {
                 return response.Data;

@@ -14,9 +14,9 @@ public static class MetricsEndpoints
 {
     public static IEndpointRouteBuilder MapMetricsEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/metrics", async (IGraphReader reader, TimeProvider time, CancellationToken ct) =>
+        app.MapGet("/metrics", async (string repoId, IGraphReader reader, TimeProvider time, CancellationToken ct) =>
         {
-            var projects = await reader.ListProjectsAsync(ct: ct);
+            var projects = await reader.ListProjectsAsync(repoId, ct);
 
             var totalClasses = 0;
             var totalInterfaces = 0;
@@ -34,14 +34,15 @@ public static class MetricsEndpoints
         })
         .WithName("GetMetrics")
         .WithTags("Metrics")
+        .RequireAuthorization("RequireRepoViewer")
         .Produces<ApiEnvelope<MetricsResponseDto>>();
 
-        app.MapGet("/metrics/coupling", async (IGraphReader reader, IConfiguration config, CancellationToken ct) =>
+        app.MapGet("/metrics/coupling", async (string repoId, IGraphReader reader, IConfiguration config, CancellationToken ct) =>
         {
             var greenMax = config.GetValue("Metrics:CouplingBands:Green", 0.3);
             var yellowMax = config.GetValue("Metrics:CouplingBands:Yellow", 0.7);
 
-            var projects = await reader.ListProjectsAsync(ct: ct);
+            var projects = await reader.ListProjectsAsync(repoId, ct);
             var graph = await reader.GetSubgraphAsync(new GetSubgraphRequest
             {
                 MaxNodes = GraphScopeResolver.UnscopedMaxNodes,
@@ -60,6 +61,7 @@ public static class MetricsEndpoints
         })
         .WithName("GetCouplingMetrics")
         .WithTags("Metrics")
+        .RequireAuthorization("RequireRepoViewer")
         .Produces<ApiEnvelope<IReadOnlyList<CouplingMetricDto>>>();
 
         app.MapGet("/metrics/circular-dependencies", async (IGraphReader reader, CancellationToken ct) =>
@@ -79,6 +81,7 @@ public static class MetricsEndpoints
         })
         .WithName("GetCircularDependencies")
         .WithTags("Metrics")
+        .RequireAuthorization("RequireRepoViewer")
         .Produces<ApiEnvelope<IReadOnlyList<CircularDependencyDto>>>();
 
         return app;

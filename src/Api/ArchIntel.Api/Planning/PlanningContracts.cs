@@ -5,7 +5,7 @@ namespace ArchIntel.Api.Planning;
 /// library doesn't exist yet (no LLM client exists anywhere in this repo), so these types live
 /// here for now — moving them out from under ArchIntel.Api into a standalone project is the
 /// natural next step once the MCP Server needs the same contract (04-mcp-server.md).</summary>
-public sealed record ImplementationPlanRequest(string Prompt, IReadOnlyList<string>? ScopeProjectIds = null);
+public sealed record ImplementationPlanRequest(string Prompt, IReadOnlyList<string>? ScopeProjectIds = null, string RepoId = "default");
 
 public sealed record ImplementationPlanResult(
     IReadOnlyList<string> AffectedProjects,

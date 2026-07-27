@@ -42,7 +42,7 @@ public static class GraphScopeResolver
     /// graph; a known project id returns that project's subgraph; anything else is looked up as a
     /// node id and expanded via a `depth`-bounded neighborhood traversal.</summary>
     public static async Task<(SubgraphDto? Subgraph, IResult? Error)> ResolveAsync(
-        IGraphReader reader, string? scope, int depth, NodeType[]? kinds, bool full, string instancePath, CancellationToken ct)
+        IGraphReader reader, string repoId, string? scope, int depth, NodeType[]? kinds, bool full, string instancePath, CancellationToken ct)
     {
         if (full || scope is null)
         {
@@ -55,7 +55,7 @@ public static class GraphScopeResolver
             return (subgraph, null);
         }
 
-        var projects = await reader.ListProjectsAsync(ct: ct);
+        var projects = await reader.ListProjectsAsync(repoId, ct);
         if (projects.Any(p => p.ProjectId == scope))
         {
             var subgraph = await reader.GetSubgraphAsync(new GetSubgraphRequest

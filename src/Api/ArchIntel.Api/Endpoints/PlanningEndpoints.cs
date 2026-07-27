@@ -15,7 +15,7 @@ public static class PlanningEndpoints
     public static IEndpointRouteBuilder MapPlanningEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPost("/implementation-plan", (
-            ImplementationPlanRequest request, JobStore jobStore, IPlanningService planningService, IArchitectureChangeNotifier notifier) =>
+            string repoId, ImplementationPlanRequest request, JobStore jobStore, IPlanningService planningService, IArchitectureChangeNotifier notifier) =>
         {
             if (string.IsNullOrWhiteSpace(request.Prompt))
             {
@@ -23,21 +23,24 @@ public static class PlanningEndpoints
             }
 
             var job = jobStore.Create();
+            var scopedRequest = request with { RepoId = repoId };
 
             // Deliberately CancellationToken.None, not the request's — this work must outlive the
             // 202 response that ends the HTTP request's lifetime.
-            _ = RunJobAsync(jobStore, notifier, job.JobId,
-                () => planningService.GeneratePlanAsync(request, CancellationToken.None));
+            _ = RunJobAsync(jobStore, notifier, repoId, job.JobId,
+                () => planningService.GeneratePlanAsync(scopedRequest, CancellationToken.None));
 
-            return Results.Accepted($"/api/v1/jobs/{job.JobId}", new ApiEnvelope<JobAcceptedDto>(new JobAcceptedDto(job.JobId, job.Status.ToString())));
+            return Results.Accepted($"/api/v1/repos/{repoId}/jobs/{job.JobId}", new ApiEnvelope<JobAcceptedDto>(new JobAcceptedDto(job.JobId, job.Status.ToString())));
         })
         .WithName("PostImplementationPlan")
         .WithTags("Planning")
+        .RequireAuthorization("RequireRepoMaintainer")
+        .RequireRateLimiting("ai-operations")
         .Produces<ApiEnvelope<JobAcceptedDto>>(StatusCodes.Status202Accepted)
         .ProducesValidationProblem();
 
         app.MapPost("/architecture-analysis", (
-            ArchitectureAnalysisRequest request, JobStore jobStore, IPlanningService planningService, IArchitectureChangeNotifier notifier) =>
+            string repoId, ArchitectureAnalysisRequest request, JobStore jobStore, IPlanningService planningService, IArchitectureChangeNotifier notifier) =>
         {
             if (string.IsNullOrWhiteSpace(request.Question))
             {
@@ -46,20 +49,22 @@ public static class PlanningEndpoints
 
             var job = jobStore.Create();
 
-            _ = RunJobAsync(jobStore, notifier, job.JobId,
+            _ = RunJobAsync(jobStore, notifier, repoId, job.JobId,
                 () => planningService.AnalyzeAsync(request, CancellationToken.None));
 
-            return Results.Accepted($"/api/v1/jobs/{job.JobId}", new ApiEnvelope<JobAcceptedDto>(new JobAcceptedDto(job.JobId, job.Status.ToString())));
+            return Results.Accepted($"/api/v1/repos/{repoId}/jobs/{job.JobId}", new ApiEnvelope<JobAcceptedDto>(new JobAcceptedDto(job.JobId, job.Status.ToString())));
         })
         .WithName("PostArchitectureAnalysis")
         .WithTags("Planning")
+        .RequireAuthorization("RequireRepoMaintainer")
+        .RequireRateLimiting("ai-operations")
         .Produces<ApiEnvelope<JobAcceptedDto>>(StatusCodes.Status202Accepted)
         .ProducesValidationProblem();
 
         return app;
     }
 
-    private static async Task RunJobAsync<TResult>(JobStore jobStore, IArchitectureChangeNotifier notifier, string jobId, Func<Task<TResult>> work)
+    private static async Task RunJobAsync<TResult>(JobStore jobStore, IArchitectureChangeNotifier notifier, string repoId, string jobId, Func<Task<TResult>> work)
     {
         jobStore.Update(new JobRecord { JobId = jobId, Status = JobStatus.Running });
 
@@ -67,13 +72,13 @@ public static class PlanningEndpoints
         {
             var result = await work();
             jobStore.Update(new JobRecord { JobId = jobId, Status = JobStatus.Completed, Result = result });
-            await notifier.JobCompletedAsync(new JobCompletedEvent(jobId, JobStatus.Completed.ToString()));
+            await notifier.JobCompletedAsync(repoId, new JobCompletedEvent(jobId, JobStatus.Completed.ToString()));
         }
         catch (Exception ex)
         {
             var problem = ProblemTypes.PlanningServiceUnavailable() with { Title = ex.Message };
             jobStore.Update(new JobRecord { JobId = jobId, Status = JobStatus.Failed, Problem = problem });
-            await notifier.JobFailedAsync(new JobFailedEvent(jobId, JobStatus.Failed.ToString(), problem));
+            await notifier.JobFailedAsync(repoId, new JobFailedEvent(jobId, JobStatus.Failed.ToString(), problem));
         }
     }
 }

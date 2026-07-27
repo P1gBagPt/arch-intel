@@ -37,6 +37,7 @@ public static class ImpactEndpoints
         })
         .WithName("GetImpact")
         .WithTags("Impact")
+        .RequireAuthorization("RequireRepoViewer")
         .Produces<ApiEnvelope<ImpactResponseDto>>()
         .Produces(StatusCodes.Status404NotFound);
 

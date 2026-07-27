@@ -15,7 +15,7 @@ public static class ServicesEndpoints
 
     public static IEndpointRouteBuilder MapServicesEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/services", async (IGraphReader reader, string? cursor, int? limit, CancellationToken ct) =>
+        app.MapGet("/services", async (string repoId, IGraphReader reader, string? cursor, int? limit, CancellationToken ct) =>
         {
             if (!CursorPagination.TryDecode(cursor, out var offset))
             {
@@ -24,7 +24,7 @@ public static class ServicesEndpoints
 
             var effectiveLimit = Math.Clamp(limit ?? DefaultLimit, 1, MaxLimit);
 
-            var projects = await reader.ListProjectsAsync(ct: ct);
+            var projects = await reader.ListProjectsAsync(repoId, ct);
             var all = new List<ServiceSummaryDto>();
             foreach (var project in projects)
             {
@@ -44,6 +44,7 @@ public static class ServicesEndpoints
         })
         .WithName("GetServices")
         .WithTags("Services")
+        .RequireAuthorization("RequireRepoViewer")
         .Produces<ApiEnvelope<IReadOnlyList<ServiceSummaryDto>>>()
         .ProducesValidationProblem();
 
@@ -60,6 +61,7 @@ public static class ServicesEndpoints
         })
         .WithName("GetServiceDetail")
         .WithTags("Services")
+        .RequireAuthorization("RequireRepoViewer")
         .Produces<ApiEnvelope<ServiceDetailDto>>()
         .Produces(StatusCodes.Status404NotFound);
 

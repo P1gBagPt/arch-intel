@@ -15,7 +15,7 @@ public static class GraphEndpoints
 
     public static IEndpointRouteBuilder MapGraphEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/graph", async (IGraphReader reader, string? scope, int? depth, string? kinds, bool? full, CancellationToken ct) =>
+        app.MapGet("/graph", async (string repoId, IGraphReader reader, string? scope, int? depth, string? kinds, bool? full, CancellationToken ct) =>
         {
             if (!GraphScopeResolver.TryParseKinds(kinds, out var kindFilter, out var kindsError))
             {
@@ -23,7 +23,7 @@ public static class GraphEndpoints
             }
 
             var (subgraph, error) = await GraphScopeResolver.ResolveAsync(
-                reader, scope, depth ?? DefaultDepth, kindFilter, full ?? false, $"/graph?scope={scope}", ct);
+                reader, repoId, scope, depth ?? DefaultDepth, kindFilter, full ?? false, $"/graph?scope={scope}", ct);
             if (error is not null)
             {
                 return error;
@@ -38,6 +38,7 @@ public static class GraphEndpoints
         })
         .WithName("GetGraph")
         .WithTags("Graph")
+        .RequireAuthorization("RequireRepoViewer")
         .Produces<ApiEnvelope<GraphResponseDto>>()
         .ProducesValidationProblem()
         .Produces(StatusCodes.Status404NotFound);

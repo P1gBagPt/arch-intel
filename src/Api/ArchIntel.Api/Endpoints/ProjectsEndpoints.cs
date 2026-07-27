@@ -14,7 +14,7 @@ public static class ProjectsEndpoints
 
     public static IEndpointRouteBuilder MapProjectsEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/projects", async (IGraphReader reader, string? cursor, int? limit, CancellationToken ct) =>
+        app.MapGet("/projects", async (string repoId, IGraphReader reader, string? cursor, int? limit, CancellationToken ct) =>
         {
             if (!CursorPagination.TryDecode(cursor, out var offset))
             {
@@ -22,7 +22,7 @@ public static class ProjectsEndpoints
             }
 
             var effectiveLimit = Math.Clamp(limit ?? DefaultLimit, 1, MaxLimit);
-            var projects = await reader.ListProjectsAsync(ct: ct);
+            var projects = await reader.ListProjectsAsync(repoId, ct);
             var page = projects.Skip(offset).Take(effectiveLimit).Select(p => p.ToDto()).ToList();
             var hasNextPage = offset + effectiveLimit < projects.Count;
 
@@ -36,6 +36,7 @@ public static class ProjectsEndpoints
         })
         .WithName("GetProjects")
         .WithTags("Projects")
+        .RequireAuthorization("RequireRepoViewer")
         .Produces<ApiEnvelope<IReadOnlyList<ProjectSummaryDto>>>()
         .ProducesValidationProblem();
 

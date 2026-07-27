@@ -14,7 +14,7 @@ public static class DiagramEndpoints
 
     public static IEndpointRouteBuilder MapDiagramEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/diagram", async (DiagramRequestDto request, IGraphReader reader, CancellationToken ct) =>
+        app.MapPost("/diagram", async (string repoId, DiagramRequestDto request, IGraphReader reader, CancellationToken ct) =>
         {
             if (!string.Equals(request.Format, "mermaid", StringComparison.OrdinalIgnoreCase))
             {
@@ -27,7 +27,7 @@ public static class DiagramEndpoints
             }
 
             var (subgraph, error) = await GraphScopeResolver.ResolveAsync(
-                reader, request.Scope, request.Depth <= 0 ? DefaultDepth : request.Depth, kinds, full: request.Scope is null, "/diagram", ct);
+                reader, repoId, request.Scope, request.Depth <= 0 ? DefaultDepth : request.Depth, kinds, full: request.Scope is null, "/diagram", ct);
             if (error is not null)
             {
                 return error;
@@ -38,6 +38,10 @@ public static class DiagramEndpoints
         })
         .WithName("PostDiagram")
         .WithTags("Diagram")
+        // AI/cost-sensitive-adjacent per 05-rest-api.md Section 6.3's policy table (grouped with
+        // the Planning endpoints below RequireRepoOwner but above plain Viewer).
+        .RequireAuthorization("RequireRepoMaintainer")
+        .RequireRateLimiting("ai-operations")
         .Produces<ApiEnvelope<DiagramResponseDto>>()
         .ProducesValidationProblem()
         .Produces(StatusCodes.Status404NotFound);
