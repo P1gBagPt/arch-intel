@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { href: "/impact", label: "Impact Analysis" },
   { href: "/coupling", label: "Coupling Heatmap" },
   { href: "/timeline", label: "Architecture Timeline" },
+  { href: "/planner", label: "AI Planner" },
 ];
 
 export function Sidebar() {

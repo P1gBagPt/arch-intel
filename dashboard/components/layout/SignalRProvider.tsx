@@ -3,6 +3,8 @@
 import type { HubConnection } from "@microsoft/signalr";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
+import { useRepo } from "@/hooks/useRepo";
+import { queryKeys } from "@/lib/query-keys";
 import { createArchitectureHubConnection } from "@/lib/signalr-client";
 import { useLiveStatusStore } from "@/stores/live-status";
 import type { JobCompletedEvent, JobFailedEvent } from "@/types/signalr-events";
@@ -13,6 +15,7 @@ import type { JobCompletedEvent, JobFailedEvent } from "@/types/signalr-events";
 // nothing here to merge-patch into the graph query cache).
 export function SignalRProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
+  const { repoId } = useRepo();
   const connectionRef = useRef<HubConnection | null>(null);
 
   useEffect(() => {
@@ -49,7 +52,7 @@ export function SignalRProvider({ children }: { children: React.ReactNode }) {
         jobId: event.jobId,
         message: `Job ${event.jobId.slice(0, 8)} completed`,
       });
-      queryClient.invalidateQueries({ queryKey: ["jobs", event.jobId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.jobs.detail(repoId, event.jobId) });
     });
 
     connection.on("job:failed", (event: JobFailedEvent) => {
@@ -61,7 +64,7 @@ export function SignalRProvider({ children }: { children: React.ReactNode }) {
         jobId: event.jobId,
         message: `Job ${event.jobId.slice(0, 8)} failed: ${event.problem.title}`,
       });
-      queryClient.invalidateQueries({ queryKey: ["jobs", event.jobId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.jobs.detail(repoId, event.jobId) });
     });
 
     connection
@@ -78,7 +81,7 @@ export function SignalRProvider({ children }: { children: React.ReactNode }) {
       connection.stop();
       connectionRef.current = null;
     };
-  }, [queryClient]);
+  }, [queryClient, repoId]);
 
   return <>{children}</>;
 }

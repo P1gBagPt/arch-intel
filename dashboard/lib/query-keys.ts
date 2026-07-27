@@ -23,4 +23,7 @@ export const queryKeys = {
     circularDependencies: (repoId: string) =>
       ["repos", repoId, "metrics", "circular-dependencies"] as const,
   },
+  jobs: {
+    detail: (repoId: string, jobId: string) => ["repos", repoId, "jobs", jobId] as const,
+  },
 };

@@ -4,6 +4,12 @@ import type { DiagramResponse } from "@/types/diagram";
 import type { GraphResponse } from "@/types/graph";
 import type { ImpactResponse } from "@/types/impact";
 import type { CircularDependency, CouplingMetric, MetricsResponse } from "@/types/metrics";
+import type {
+  ArchitectureAnalysisResult,
+  ImplementationPlanResult,
+  JobAcceptedDto,
+  JobStatusResponseDto,
+} from "@/types/planning";
 import type { ProjectSummary } from "@/types/project";
 import type { ServiceDetail, ServiceSummary } from "@/types/service";
 
@@ -117,6 +123,42 @@ export const DIAGRAM: DiagramResponse = {
   content: 'graph TD\n  iorder_repository["IOrderRepository"] -->|Implements| order_repository["OrderRepository"]',
 };
 
+export const PLAN_JOB_ID = "job_fixture_plan";
+export const ANALYSIS_JOB_ID = "job_fixture_analysis";
+
+export const IMPLEMENTATION_PLAN_RESULT: ImplementationPlanResult = {
+  affectedProjects: ["proj-infrastructure"],
+  newFiles: [],
+  modifiedServices: ["CreateOrderCommandHandler"],
+  databaseChanges: [],
+  testsRequired: ["CreateOrderCommandHandlerTests"],
+  riskLevel: "Unknown",
+  estimatedEffort: "Unknown — placeholder Planning Service, no LLM wired yet",
+};
+
+export const ARCHITECTURE_ANALYSIS_RESULT: ArchitectureAnalysisResult = {
+  summary: "Removing or changing 'IOrderRepository' would affect 3 downstream node(s).",
+  affectedNodeIds: ["order-repository", "fake-order-repository", "svc-handler"],
+  recommendations: ["Review each affected node listed above before proceeding."],
+};
+
+const JOB_STATUS_BY_ID: Record<string, JobStatusResponseDto> = {
+  [PLAN_JOB_ID]: {
+    jobId: PLAN_JOB_ID,
+    status: "Completed",
+    progressPercent: null,
+    result: IMPLEMENTATION_PLAN_RESULT,
+    problem: null,
+  },
+  [ANALYSIS_JOB_ID]: {
+    jobId: ANALYSIS_JOB_ID,
+    status: "Completed",
+    progressPercent: null,
+    result: ARCHITECTURE_ANALYSIS_RESULT,
+    problem: null,
+  },
+};
+
 function envelope<T>(data: T): ApiEnvelope<T> {
   return { data, page: null };
 }
@@ -161,4 +203,20 @@ export async function mockApi(page: Page, apiOrigin: string) {
   // Exact path (no trailing `*`) so it doesn't also swallow /metrics/coupling or
   // /metrics/circular-dependencies — those are registered as their own, more specific routes.
   await page.route(`${apiOrigin}/api/v1/repos/*/metrics`, (route) => json(route, envelope(METRICS)));
+
+  // Real backend returns 202 + jobId immediately; the job is already "Completed" by the time
+  // GET /jobs/{jobId} below is polled, so useJobStatus's refetchInterval fires at most once.
+  await page.route(`${apiOrigin}/api/v1/repos/*/implementation-plan`, (route) =>
+    json(route, envelope<JobAcceptedDto>({ jobId: PLAN_JOB_ID, status: "Pending" }), 202),
+  );
+  await page.route(`${apiOrigin}/api/v1/repos/*/architecture-analysis`, (route) =>
+    json(route, envelope<JobAcceptedDto>({ jobId: ANALYSIS_JOB_ID, status: "Pending" }), 202),
+  );
+  await page.route(`${apiOrigin}/api/v1/repos/*/jobs/*`, (route) => {
+    const url = new URL(route.request().url());
+    const jobId = url.pathname.split("/").pop()!;
+    const status = JOB_STATUS_BY_ID[jobId];
+    if (!status) return json(route, { title: "Job not found" }, 404);
+    return json(route, envelope(status));
+  });
 }
