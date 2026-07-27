@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Scanner\ArchScanner.Core\ArchScanner.Core.csproj" />
+    <ProjectReference Include="..\..\GraphStore\ArchIntel.GraphStore.Contracts\ArchIntel.GraphStore.Contracts.csproj" />
+    <ProjectReference Include="..\..\GraphStore\ArchIntel.GraphStore.Sqlite\ArchIntel.GraphStore.Sqlite.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="7.2.0" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>ArchIntel.Api</RootNamespace>
+  </PropertyGroup>
+
+</Project>
