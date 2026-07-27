@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { href: "/services", label: "Service Explorer" },
   { href: "/impact", label: "Impact Analysis" },
   { href: "/coupling", label: "Coupling Heatmap" },
+  { href: "/timeline", label: "Architecture Timeline" },
 ];
 
 export function Sidebar() {

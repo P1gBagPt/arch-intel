@@ -3,7 +3,7 @@ import type { ApiEnvelope } from "@/types/api";
 import type { DiagramResponse } from "@/types/diagram";
 import type { GraphResponse } from "@/types/graph";
 import type { ImpactResponse } from "@/types/impact";
-import type { CircularDependency, CouplingMetric } from "@/types/metrics";
+import type { CircularDependency, CouplingMetric, MetricsResponse } from "@/types/metrics";
 import type { ProjectSummary } from "@/types/project";
 import type { ServiceDetail, ServiceSummary } from "@/types/service";
 
@@ -104,6 +104,14 @@ export const CIRCULAR_DEPENDENCIES: CircularDependency[] = [
   { cycle: ["proj-application", "proj-infrastructure", "proj-application"], length: 2 },
 ];
 
+export const METRICS: MetricsResponse = {
+  totalProjects: 3,
+  totalClasses: 12,
+  totalInterfaces: 2,
+  totalServices: 1,
+  generatedAtUtc: "2026-01-01T00:00:00Z",
+};
+
 export const DIAGRAM: DiagramResponse = {
   format: "mermaid",
   content: 'graph TD\n  iorder_repository["IOrderRepository"] -->|Implements| order_repository["OrderRepository"]',
@@ -150,4 +158,7 @@ export async function mockApi(page: Page, apiOrigin: string) {
   await page.route(`${apiOrigin}/api/v1/repos/*/metrics/circular-dependencies`, (route) =>
     json(route, envelope(CIRCULAR_DEPENDENCIES)),
   );
+  // Exact path (no trailing `*`) so it doesn't also swallow /metrics/coupling or
+  // /metrics/circular-dependencies — those are registered as their own, more specific routes.
+  await page.route(`${apiOrigin}/api/v1/repos/*/metrics`, (route) => json(route, envelope(METRICS)));
 }
