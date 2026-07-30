@@ -48,3 +48,18 @@ test("shows a 404-derived empty state for an unknown target", async ({ page }) =
   await page.goto("/impact/does-not-exist");
   await expect(page.getByText(/Failed to analyze impact/i)).toBeVisible();
 });
+
+test("links to the AI Planner pre-filled with an implementation-plan prompt for the target", async ({ page }) => {
+  await page.goto("/impact/iorder-repository");
+  await expect(page.getByRole("link", { name: "Plan this change" })).toHaveAttribute(
+    "href",
+    "/planner?kind=implementation-plan&prompt=Implement%20changes%20to%20IOrderRepository",
+  );
+
+  await page.getByRole("link", { name: "Plan this change" }).click();
+  await expect(page).toHaveURL(/\/planner\?/);
+  await expect(page.getByRole("button", { name: "Implementation Plan" })).toHaveClass(/bg-accent/);
+  await expect(page.getByPlaceholder("Describe the change you want to implement…")).toHaveValue(
+    "Implement changes to IOrderRepository",
+  );
+});

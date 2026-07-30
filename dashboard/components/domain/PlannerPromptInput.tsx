@@ -29,13 +29,19 @@ const MODES: { kind: PlannerJobKind; label: string; placeholder: string; scopeLa
 export function PlannerPromptInput({
   onSubmit,
   disabled,
+  initialKind,
+  initialText,
+  initialScope,
 }: {
   onSubmit: (submission: PlannerSubmission) => void;
   disabled: boolean;
+  initialKind?: PlannerJobKind;
+  initialText?: string;
+  initialScope?: string;
 }) {
-  const [kind, setKind] = useState<PlannerJobKind>("implementation-plan");
-  const [text, setText] = useState("");
-  const [scope, setScope] = useState("");
+  const [kind, setKind] = useState<PlannerJobKind>(initialKind ?? "implementation-plan");
+  const [text, setText] = useState(initialText ?? "");
+  const [scope, setScope] = useState(initialScope ?? "");
 
   const mode = MODES.find((m) => m.kind === kind)!;
 

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ImpactSummaryList } from "@/components/domain/ImpactSummaryList";
+import { RunPlannerFromImpactButton } from "@/components/domain/RunPlannerFromImpactButton";
 import { ExportMermaidButton } from "@/components/graph/ExportMermaidButton";
 import { ImpactGraphHighlight } from "@/components/graph/ImpactGraphHighlight";
 import { useImpactAnalysis } from "@/hooks/useImpactAnalysis";
@@ -30,7 +31,10 @@ export function ImpactResultView({ targetId }: { targetId: string }) {
             </Link>
           </p>
         </div>
-        <ExportMermaidButton scope={data.targetId} depth={2} />
+        <div className="flex shrink-0 gap-2">
+          <RunPlannerFromImpactButton targetName={data.targetName} />
+          <ExportMermaidButton scope={data.targetId} depth={2} />
+        </div>
       </div>
       <ImpactSummaryList affected={data.affected} />
       <ImpactGraphHighlight targetId={data.targetId} />
