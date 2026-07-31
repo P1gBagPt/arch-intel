@@ -13,3 +13,16 @@ export const COUPLING_BAND_STYLES: Record<CouplingBand, { border: string; text: 
 export function couplingBandStyle(band: string) {
   return COUPLING_BAND_STYLES[band as CouplingBand] ?? COUPLING_BAND_STYLES.Green;
 }
+
+// SVG fill/stroke attributes accept var() directly (same pattern as TimelineTrendChart's
+// stroke="var(--accent)") — needed for the treemap's canvas-drawn cells, which can't use
+// Tailwind's bg-coupling-* utility classes the way the grid/table cells above do.
+export const COUPLING_BAND_COLOR_VAR: Record<CouplingBand, string> = {
+  Green: "var(--coupling-stable)",
+  Yellow: "var(--coupling-moderate)",
+  Red: "var(--coupling-high)",
+};
+
+export function couplingBandColorVar(band: string) {
+  return COUPLING_BAND_COLOR_VAR[band as CouplingBand] ?? COUPLING_BAND_COLOR_VAR.Green;
+}

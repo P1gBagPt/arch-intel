@@ -5,8 +5,18 @@ test.beforeEach(async ({ page }) => {
   await mockApi(page, API_ORIGIN);
 });
 
+test("shows a treemap by default with a real cell per project", async ({ page }) => {
+  await page.goto("/coupling");
+
+  const cells = page.locator('g[role="button"]');
+  await expect(cells).toHaveCount(3);
+  await expect(page.getByRole("button", { name: /SampleErp.Infrastructure: Highly coupled/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /SampleErp.Domain: Stable/ })).toBeVisible();
+});
+
 test("shows the coupling grid sorted by instability with band labels", async ({ page }) => {
   await page.goto("/coupling");
+  await page.getByRole("button", { name: "Grid", exact: true }).click();
 
   const cards = page.locator("button", { hasText: "Instability" });
   await expect(cards).toHaveCount(3);
@@ -31,12 +41,24 @@ test("shows the circular dependency banner with a working link", async ({ page }
 
 test("opens the detail panel with real numbers and a graph link", async ({ page }) => {
   await page.goto("/coupling");
+  await page.getByRole("button", { name: "Grid", exact: true }).click();
   await page.locator("button", { hasText: "SampleErp.Infrastructure" }).click();
 
   await expect(page.getByText("Coupling details")).toBeVisible();
   await expect(page.getByText("Afferent coupling")).toBeVisible();
   await expect(page.getByText("0", { exact: true })).toBeVisible();
   await expect(page.getByText("5", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "View in Dependency Graph" })).toHaveAttribute(
+    "href",
+    "/graph/proj-infrastructure",
+  );
+});
+
+test("opens the detail panel from a treemap cell click", async ({ page }) => {
+  await page.goto("/coupling");
+  await page.getByRole("button", { name: /SampleErp.Infrastructure: Highly coupled/ }).click();
+
+  await expect(page.getByText("Coupling details")).toBeVisible();
   await expect(page.getByRole("link", { name: "View in Dependency Graph" })).toHaveAttribute(
     "href",
     "/graph/proj-infrastructure",

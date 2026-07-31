@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { couplingBandStyle } from "@/lib/constants/coupling-scale";
+import { ResponsiveContainer, Tooltip, Treemap } from "recharts";
+import { couplingBandColorVar, couplingBandStyle } from "@/lib/constants/coupling-scale";
 import type { CouplingMetric } from "@/types/metrics";
 
 interface CouplingGridProps {
@@ -10,37 +11,139 @@ interface CouplingGridProps {
   selectedProjectId?: string;
 }
 
-type ViewMode = "grid" | "table";
+type ViewMode = "treemap" | "grid" | "table";
 
-// A treemap (06-dashboard.md §4.6) needs a size dimension — project class/node count — that
-// CouplingMetricDto doesn't carry; a card grid with a table fallback covers the same accessibility
-// goal (§4.6's "toggle... for users who prefer scanning a ranked list") without inventing a size
-// metric the real API doesn't provide.
+// CouplingMetricDto has no class-count-per-project field to size a treemap by (06-dashboard.md
+// §4.6 assumes one) — using total coupling volume (afferent + efferent) instead. It's a real,
+// meaningful metric already returned by the backend, not a fabricated size, and it reads
+// naturally as "how structurally significant is this project" rather than "how big is it."
+function treemapSize(metric: CouplingMetric): number {
+  return Math.max(metric.afferentCoupling + metric.efferentCoupling, 1);
+}
+
+interface TreemapCellProps {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  projectId?: string;
+  name?: string;
+}
+
+function TreemapCell(
+  props: TreemapCellProps & { metricsById: Map<string, CouplingMetric>; selectedProjectId?: string; onSelect: (metric: CouplingMetric) => void },
+) {
+  const { x = 0, y = 0, width = 0, height = 0, projectId, metricsById, selectedProjectId, onSelect } = props;
+  const metric = projectId ? metricsById.get(projectId) : undefined;
+  if (!metric) return null;
+
+  const style = couplingBandStyle(metric.band);
+  const selected = metric.projectId === selectedProjectId;
+  const showLabel = width > 56 && height > 28;
+
+  return (
+    <g
+      onClick={() => onSelect(metric)}
+      role="button"
+      tabIndex={0}
+      aria-label={`${metric.projectName}: ${style.label}, instability ${metric.instability.toFixed(2)}`}
+      className="cursor-pointer"
+    >
+      <title>{`${metric.projectName} — ${style.label} (instability ${metric.instability.toFixed(2)})`}</title>
+      <rect
+        x={x}
+        y={y}
+        width={width}
+        height={height}
+        style={{
+          fill: couplingBandColorVar(metric.band),
+          fillOpacity: selected ? 0.55 : 0.3,
+          stroke: "var(--background)",
+          strokeWidth: 2,
+        }}
+      />
+      {showLabel && (
+        <text x={x + 6} y={y + 16} fontSize={11} fill="var(--foreground)" className="pointer-events-none">
+          {metric.projectName}
+        </text>
+      )}
+      {showLabel && (
+        <text x={x + 6} y={y + 30} fontSize={10} fill="var(--muted-foreground)" className={`pointer-events-none ${style.text}`}>
+          {style.label}
+        </text>
+      )}
+    </g>
+  );
+}
+
+// A treemap is preferred over a plain grid per 06-dashboard.md §4.6 ("lets project size carry
+// information alongside coupling color") — kept as the default view, with grid/table as
+// accessibility- and preference-driven fallbacks for users who'd rather scan a ranked list.
 export function CouplingGrid({ metrics, onSelect, selectedProjectId }: CouplingGridProps) {
-  const [view, setView] = useState<ViewMode>("grid");
+  const [view, setView] = useState<ViewMode>("treemap");
 
   const sorted = useMemo(() => [...metrics].sort((a, b) => b.instability - a.instability), [metrics]);
+  const metricsById = useMemo(() => new Map(metrics.map((m) => [m.projectId, m])), [metrics]);
+  const treemapData = useMemo(
+    () => sorted.map((m) => ({ name: m.projectName, projectId: m.projectId, size: treemapSize(m) })),
+    [sorted],
+  );
 
   return (
     <div className="space-y-3">
       <div className="flex justify-end gap-2 text-xs">
-        <button
-          type="button"
-          onClick={() => setView("grid")}
-          className={`rounded-md border border-surface-border px-2 py-1 ${view === "grid" ? "bg-surface font-medium" : "text-muted-foreground"}`}
-        >
-          Grid
-        </button>
-        <button
-          type="button"
-          onClick={() => setView("table")}
-          className={`rounded-md border border-surface-border px-2 py-1 ${view === "table" ? "bg-surface font-medium" : "text-muted-foreground"}`}
-        >
-          Table
-        </button>
+        {(
+          [
+            { mode: "treemap", label: "Treemap" },
+            { mode: "grid", label: "Grid" },
+            { mode: "table", label: "Table" },
+          ] as const
+        ).map(({ mode, label }) => (
+          <button
+            key={mode}
+            type="button"
+            onClick={() => setView(mode)}
+            className={`rounded-md border border-surface-border px-2 py-1 ${view === mode ? "bg-surface font-medium" : "text-muted-foreground"}`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
-      {view === "grid" ? (
+      {view === "treemap" && (
+        <div className="rounded-md border border-surface-border p-2">
+          <ResponsiveContainer width="100%" height={360}>
+            <Treemap
+              data={treemapData}
+              dataKey="size"
+              aspectRatio={4 / 3}
+              stroke="var(--background)"
+              isAnimationActive={false}
+              content={
+                <TreemapCell metricsById={metricsById} selectedProjectId={selectedProjectId} onSelect={onSelect} />
+              }
+            >
+              <Tooltip
+                content={({ payload }) => {
+                  const projectId = payload?.[0]?.payload?.projectId as string | undefined;
+                  const metric = projectId ? metricsById.get(projectId) : undefined;
+                  if (!metric) return null;
+                  const style = couplingBandStyle(metric.band);
+                  return (
+                    <div className="rounded-md border border-surface-border bg-background p-2 text-xs shadow-lg">
+                      <p className="font-medium">{metric.projectName}</p>
+                      <p className={style.text}>{style.label}</p>
+                      <p className="text-muted-foreground">Instability {metric.instability.toFixed(2)}</p>
+                    </div>
+                  );
+                }}
+              />
+            </Treemap>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {view === "grid" && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {sorted.map((metric) => {
             const style = couplingBandStyle(metric.band);
@@ -59,7 +162,9 @@ export function CouplingGrid({ metrics, onSelect, selectedProjectId }: CouplingG
             );
           })}
         </div>
-      ) : (
+      )}
+
+      {view === "table" && (
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-surface-border text-left text-xs text-muted-foreground">
