@@ -7,16 +7,28 @@ RUN dotnet publish "src/Api/ArchIntel.Api/ArchIntel.Api.csproj" -c Release -o /a
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
-ENV ASPNETCORE_URLS=http://+:8080
+# PORT defaults to 8080 for local/Fly-style deploys that expect a fixed port; hosts that assign
+# their own port at runtime (e.g. Render, which injects PORT and expects the container to bind to
+# it rather than honoring EXPOSE) override it via an env var, picked up by the entrypoint below.
+ENV PORT=8080
 ENV ASPNETCORE_ENVIRONMENT=Production
 EXPOSE 8080
 COPY --from=build /app/publish .
+
+# Bakes in the pre-scanned SampleErp demo repo (arch.yaml + .arch/graph.db) so the live/demo
+# deployment has real data to serve without needing a mounted customer repo. ARCH_CONFIG points
+# ConfigDiscovery straight at it (bypassing the arch.yml-only walk-up — see
+# Configuration/ConfigDiscovery.cs), read-only at runtime since nothing here re-scans.
+COPY samples/SampleErpSolution/arch.yaml /app/demo-repo/arch.yaml
+COPY samples/SampleErpSolution/.arch /app/demo-repo/.arch
+ENV ARCH_CONFIG=/app/demo-repo/arch.yaml
 
 # SQLite database file lives on a mounted volume in single-instance deployments (05-rest-api.md
 # Section 8.1); Phase 4 with PostgreSQL (02-graph-store.md's own roadmap) removes this requirement.
 VOLUME ["/app/data"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
-  CMD wget --spider -q http://localhost:8080/health || exit 1
+  CMD wget --spider -q "http://localhost:${PORT}/health" || exit 1
 
-ENTRYPOINT ["dotnet", "ArchIntel.Api.dll"]
+# Shell form (not exec-form JSON) so $PORT is substituted at container start, not image-build time.
+ENTRYPOINT ASPNETCORE_URLS="http://+:${PORT}" exec dotnet ArchIntel.Api.dll
