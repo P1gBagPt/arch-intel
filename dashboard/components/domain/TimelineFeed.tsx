@@ -15,7 +15,15 @@ function formatDelta(delta: TimelineEntry["delta"]) {
   return parts.join(", ");
 }
 
-export function TimelineFeed({ entries }: { entries: TimelineEntry[] }) {
+export function TimelineFeed({
+  entries,
+  selectedId,
+  onSelect,
+}: {
+  entries: TimelineEntry[];
+  selectedId?: string | null;
+  onSelect?: (entry: TimelineEntry) => void;
+}) {
   if (entries.length === 0) {
     return <p className="py-8 text-center text-sm text-muted-foreground">Waiting for the first reading…</p>;
   }
@@ -25,8 +33,15 @@ export function TimelineFeed({ entries }: { entries: TimelineEntry[] }) {
       {entries.map((entry, i) => {
         const isBaseline = entry.delta === null;
         const deltaText = formatDelta(entry.delta);
+        const clickable = !isBaseline && !!onSelect;
         return (
-          <li key={entry.id} className="rounded-md border border-surface-border p-3 text-sm">
+          <li
+            key={entry.id}
+            onClick={clickable ? () => onSelect?.(entry) : undefined}
+            className={`rounded-md border p-3 text-sm ${
+              entry.id === selectedId ? "border-accent" : "border-surface-border"
+            } ${clickable ? "cursor-pointer hover:bg-surface" : ""}`}
+          >
             <div className="flex items-center justify-between">
               <span className="font-medium">{i === 0 ? "Now" : new Date(entry.timestamp).toLocaleTimeString()}</span>
               {!isBaseline && <span className="text-xs text-accent">Change detected</span>}
@@ -37,6 +52,7 @@ export function TimelineFeed({ entries }: { entries: TimelineEntry[] }) {
             </p>
             {deltaText && <p className="mt-1 font-medium">Changes: {deltaText}</p>}
             {isBaseline && <p className="mt-1 text-xs text-muted-foreground">Baseline reading</p>}
+            {clickable && <p className="mt-1 text-xs text-accent">What changed →</p>}
           </li>
         );
       })}
