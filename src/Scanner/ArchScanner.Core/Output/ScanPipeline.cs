@@ -62,6 +62,45 @@ public sealed class ScanPipeline
         var allNodes = discoveryResult.Nodes.Concat(resolutionResult.Nodes).ToList();
         var allEdges = discoveryResult.Edges.Concat(resolutionResult.Edges).ToList();
 
+        // Nodes/edges referencing a project or node id that was never actually written would hit
+        // SQLite's FOREIGN KEY constraint (schema: nodes.project_id -> projects, edges.source_id/
+        // target_id -> nodes) as an opaque "SQLite Error 19" with no indication of which row or
+        // why. Validated here instead, against real solutions where discovery/resolution can
+        // produce a dangling reference (e.g. a resolved relationship pointing at a symbol from an
+        // ignored/excluded project) — the offending rows are dropped with a warning rather than
+        // failing the whole scan.
+        var projectIds = new HashSet<string>(discoveryResult.Projects.Select(p => p.ProjectId));
+        var validNodes = new List<NodeDto>(allNodes.Count);
+        foreach (var node in allNodes)
+        {
+            if (projectIds.Contains(node.ProjectId))
+            {
+                validNodes.Add(node);
+            }
+            else
+            {
+                warnings.Add($"Dropped node '{node.FullName}' ({node.NodeId}): references unknown project '{node.ProjectId}'.");
+            }
+        }
+
+        var nodeIds = new HashSet<string>(validNodes.Select(n => n.NodeId));
+        var validEdges = new List<EdgeDto>(allEdges.Count);
+        foreach (var edge in allEdges)
+        {
+            if (nodeIds.Contains(edge.SourceId) && nodeIds.Contains(edge.TargetId))
+            {
+                validEdges.Add(edge);
+            }
+            else
+            {
+                var missing = !nodeIds.Contains(edge.SourceId) ? $"source '{edge.SourceId}'" : $"target '{edge.TargetId}'";
+                warnings.Add($"Dropped {edge.RelationshipType} edge '{edge.EdgeId}': references unknown node {missing}.");
+            }
+        }
+
+        allNodes = validNodes;
+        allEdges = validEdges;
+
         var scanHandle = await _writer.BeginScanAsync(
             new BeginScanRequest { RepoId = repoId, ScanType = ScanType.Full, TriggeredBy = "cli" }, ct);
 
