@@ -1,18 +1,26 @@
 import { expect, test } from "@playwright/test";
 import { API_ORIGIN, mockApi } from "./fixtures/api";
-import { clickGraphNode } from "./helpers";
+import { clickGraphNode, loadFullGraph } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await mockApi(page, API_ORIGIN);
 });
 
-test("loads the fixture graph and shows the node/edge count", async ({ page }) => {
+test("defaults to a project-map view and can load the full graph", async ({ page }) => {
   await page.goto("/graph");
+  // The fixture's GRAPH nodes aren't Project-kind, so mockApi's unfiltered /graph route just
+  // returns the same 5 nodes/3 edges regardless of the kinds=Project the client actually sent —
+  // this only verifies the toolbar's project-map label and the opt-in escape hatch, not real
+  // server-side kind filtering (that's a backend concern, exercised manually against a real repo).
+  await expect(page.getByText(/Project map — \d+ projects/)).toBeVisible();
+
+  await loadFullGraph(page);
   await expect(page.getByText("5 nodes · 3 edges")).toBeVisible();
 });
 
 test("clicking a node opens the detail drawer with correct data and links", async ({ page }) => {
   await page.goto("/graph");
+  await loadFullGraph(page);
   await clickGraphNode(page, "order-repository");
 
   await expect(page.getByText("Node details")).toBeVisible();
@@ -30,6 +38,7 @@ test("clicking a node opens the detail drawer with correct data and links", asyn
 
 test("closing the drawer clears the selection", async ({ page }) => {
   await page.goto("/graph");
+  await loadFullGraph(page);
   await clickGraphNode(page, "order-repository");
   await expect(page.getByText("Node details")).toBeVisible();
 
@@ -39,6 +48,7 @@ test("closing the drawer clears the selection", async ({ page }) => {
 
 test("exports the graph as Mermaid", async ({ page }) => {
   await page.goto("/graph");
+  await loadFullGraph(page);
   await page.getByRole("button", { name: "Export as Mermaid" }).click();
 
   await expect(page.getByRole("heading", { name: "Mermaid export" })).toBeVisible();
