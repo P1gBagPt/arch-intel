@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: arch-intel-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      # Backend CORS policy (Program.cs) reads Cors:AllowedOrigins from config; ASP.NET Core maps
+      # Cors__AllowedOrigins__0 to Cors:AllowedOrigins[0]. Points at the stable Vercel project
+      # domain rather than a per-deployment preview URL, which changes on every push.
+      - key: Cors__AllowedOrigins__0
+        value: https://arch-intel-p1gbagpts-projects.vercel.app
