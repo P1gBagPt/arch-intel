@@ -3,7 +3,14 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 COPY . .
 RUN dotnet restore "src/Api/ArchIntel.Api/ArchIntel.Api.csproj"
+RUN dotnet restore "src/Cli/Arch.Cli/Arch.Cli.csproj"
 RUN dotnet publish "src/Api/ArchIntel.Api/ArchIntel.Api.csproj" -c Release -o /app/publish --no-restore
+RUN dotnet publish "src/Cli/Arch.Cli/Arch.Cli.csproj" -c Release -o /app/cli --no-restore
+
+# .arch/graph.db is gitignored (*.db) so it can't be copied straight from the repo — regenerate
+# the demo scan fresh from source at build time instead, using the just-published CLI.
+RUN dotnet restore samples/SampleErpSolution/SampleErpSolution.sln
+RUN dotnet /app/cli/arch.dll scan --config samples/SampleErpSolution/arch.yaml
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
@@ -15,12 +22,12 @@ ENV ASPNETCORE_ENVIRONMENT=Production
 EXPOSE 8080
 COPY --from=build /app/publish .
 
-# Bakes in the pre-scanned SampleErp demo repo (arch.yaml + .arch/graph.db) so the live/demo
+# Bakes in the SampleErp demo repo, scanned fresh during the build stage above, so the live/demo
 # deployment has real data to serve without needing a mounted customer repo. ARCH_CONFIG points
 # ConfigDiscovery straight at it (bypassing the arch.yml-only walk-up — see
 # Configuration/ConfigDiscovery.cs), read-only at runtime since nothing here re-scans.
-COPY samples/SampleErpSolution/arch.yaml /app/demo-repo/arch.yaml
-COPY samples/SampleErpSolution/.arch /app/demo-repo/.arch
+COPY --from=build /src/samples/SampleErpSolution/arch.yaml /app/demo-repo/arch.yaml
+COPY --from=build /src/samples/SampleErpSolution/.arch /app/demo-repo/.arch
 ENV ARCH_CONFIG=/app/demo-repo/arch.yaml
 
 # SQLite database file lives on a mounted volume in single-instance deployments (05-rest-api.md
