@@ -1,6 +1,14 @@
 import type { Page } from "@playwright/test";
 import type { Core } from "cytoscape";
 
+// The unscoped /graph route defaults to a Project-kind-only "project map" (DependencyGraphView) —
+// tests that need the fixture's full small graph (node clicks, Mermaid export) must explicitly
+// opt into "Load full graph", same as a real user would, including its confirm() dialog.
+export async function loadFullGraph(page: Page) {
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Load full graph" }).click();
+}
+
 // Next.js dev mode double-invokes effects (React StrictMode) — the Cytoscape renderer's mount
 // effect briefly creates-then-destroys a first cy instance before the real one settles (see
 // components/graph/renderers/CytoscapeGraphRenderer.tsx). Waiting for `__cyInstance` to exist

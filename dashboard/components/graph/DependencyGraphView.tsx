@@ -16,27 +16,43 @@ import type { GraphEdge, GraphNode, GraphResponse } from "@/types/graph";
 export function DependencyGraphView({ scope }: { scope?: string }) {
   const { repoId } = useRepo();
   const queryClient = useQueryClient();
-  const { data, isLoading, isError, error } = useDependencyGraph({ scope, depth: 2 });
+
+  // Landing on /graph with no scope used to eagerly fetch the ENTIRE graph (GraphScopeResolver
+  // treats "no scope" as "whole graph", capped at 100k nodes server-side — no cap at all for a
+  // real mid-size solution). Against a real ~5,000-node repo this took 50+s server-side alone and
+  // then hung the renderer client-side — exactly the risk 06-dashboard.md §11 flagged and was
+  // supposed to be mitigated by defaulting to a "top-level projects only, expand-on-demand" view,
+  // which never actually got wired up (only ever exercised against small fixtures/demo repos
+  // until now). Defaults to Project-kind-only here; deep-linked scopes (a specific project/node,
+  // e.g. from Repository Explorer or Impact Analysis) are unaffected and always show full detail.
+  const [showFullGraph, setShowFullGraph] = useState(false);
+  const isProjectMapView = !scope && !showFullGraph;
+  const { data, isLoading, isError, error } = useDependencyGraph({
+    scope,
+    depth: 2,
+    kinds: isProjectMapView ? ["Project"] : undefined,
+  });
 
   // Merged state starts from the base query result and grows via "Expand neighborhood" without
   // ever being replaced by a background refetch of the same scope — only a genuine scope change
-  // (navigating to a different node/page) resets it, so expand-driven pan/zoom/selection survive
-  // exactly as 06-dashboard.md §6.2 intends.
+  // (navigating to a different node/page, or toggling the project-map/full-graph view) resets it,
+  // so expand-driven pan/zoom/selection survive exactly as 06-dashboard.md §6.2 intends.
   const [mergedNodes, setMergedNodes] = useState<GraphNode[]>([]);
   const [mergedEdges, setMergedEdges] = useState<GraphEdge[]>([]);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<GraphNode | null>(null);
   const [expandingId, setExpandingId] = useState<string | null>(null);
-  const lastScopeRef = useRef<string | undefined>(undefined);
+  const viewKey = `${scope ?? ""}:${isProjectMapView}`;
+  const lastViewKeyRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     if (!data) return;
-    if (lastScopeRef.current === scope && mergedNodes.length > 0) return;
-    lastScopeRef.current = scope;
+    if (lastViewKeyRef.current === viewKey && mergedNodes.length > 0) return;
+    lastViewKeyRef.current = viewKey;
     setMergedNodes(data.nodes);
     setMergedEdges(data.edges);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, scope]);
+  }, [data, viewKey]);
 
   const searchMatchId = useMemo(() => {
     if (!search.trim()) return undefined;
@@ -91,6 +107,16 @@ export function DependencyGraphView({ scope }: { scope?: string }) {
         edgeCount={mergedEdges.length}
         truncated={data.truncated}
         scope={scope}
+        isProjectMapView={isProjectMapView}
+        onLoadFullGraph={() => {
+          if (
+            window.confirm(
+              "Loading the full graph can be slow and may be hard to navigate on a large repository. Continue?",
+            )
+          ) {
+            setShowFullGraph(true);
+          }
+        }}
       />
       <div className="flex flex-1 overflow-hidden">
         <DependencyGraphCanvas
